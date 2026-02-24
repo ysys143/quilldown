@@ -27,7 +27,7 @@ A lightweight, native macOS markdown viewer and editor built with SwiftUI and We
 ### Homebrew
 
 ```bash
-brew tap ysys143/tap
+brew tap ysys143/quilldown
 brew install --cask quilldown
 ```
 
@@ -215,3 +215,7 @@ codesign --sign 'Developer ID Application: Your Name' Quilldown.dmg
 xcrun notarytool submit Quilldown.dmg --keychain-profile 'profile' --wait
 xcrun stapler staple Quilldown.dmg
 ```
+
+## License
+
+Apache License 2.0. See [LICENSE](LICENSE) for details.
