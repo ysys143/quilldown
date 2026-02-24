@@ -4,9 +4,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Markdown Viewser is a macOS native document-based app for viewing and editing Markdown files. Built with SwiftUI + WebKit, it renders markdown via bundled JavaScript libraries (markdown-it, KaTeX, Prism.js, Mermaid) inside a WKWebView. Supports editor-only, preview-only, and split view modes with bidirectional scroll sync.
+Quilldown is a macOS native document-based app for viewing and editing Markdown files. Built with SwiftUI + WebKit, it renders markdown via bundled JavaScript libraries (markdown-it, KaTeX, Prism.js, Mermaid) inside a WKWebView. Supports editor-only, preview-only, and split view modes with bidirectional scroll sync.
 
-**Target**: macOS 14.0+ | **Swift**: 5.9 | **Bundle ID**: `com.viewser.markdownviewser`
+**Target**: macOS 14.0+ | **Swift**: 5.9 | **Bundle ID**: `com.quilldown.app`
 
 ## Build Commands
 
@@ -15,16 +15,16 @@ Markdown Viewser is a macOS native document-based app for viewing and editing Ma
 xcodegen generate
 
 # Build (Debug)
-xcodebuild -scheme MarkdownViewser -configuration Debug -derivedDataPath build -destination 'platform=macOS' build
+xcodebuild -scheme Quilldown -configuration Debug -derivedDataPath build -destination 'platform=macOS' build
 
 # Build (Release) + create DMG
 ./scripts/create-dmg.sh
 
 # Open in Xcode
-open MarkdownViewser.xcodeproj
+open Quilldown.xcodeproj
 ```
 
-No external Swift package dependencies. All rendering libraries are bundled JS/CSS in `MarkdownViewser/Resources/`.
+No external Swift package dependencies. All rendering libraries are bundled JS/CSS in `Quilldown/Resources/`.
 
 ## Architecture
 
@@ -40,7 +40,7 @@ File (.md) → MarkdownDocument (FileDocument protocol, UTF-8 with BOM detection
 
 | File | Role |
 |------|------|
-| `MarkdownViewserApp.swift` | App entry, DocumentGroup, menu commands (zoom, PDF export) |
+| `QuilldownApp.swift` | App entry, DocumentGroup, menu commands (zoom, PDF export) |
 | `ContentView.swift` | Main layout: TOC sidebar + editor/preview, view mode switching |
 | `MarkdownWebView.swift` | WKWebView NSViewRepresentable, JavaScript bridge for rendering |
 | `MarkdownEditorView.swift` | NSTextView NSViewRepresentable, line number tracking |
@@ -63,7 +63,7 @@ File (.md) → MarkdownDocument (FileDocument protocol, UTF-8 with BOM detection
 
 ### Web Resources
 
-All in `MarkdownViewser/Resources/`, copied to app bundle via post-compile rsync script (defined in `project.yml`). Not managed by Xcode's resource phase — changes to resources require rebuilding.
+All in `Quilldown/Resources/`, copied to app bundle via post-compile rsync script (defined in `project.yml`). Not managed by Xcode's resource phase — changes to resources require rebuilding.
 
 ### Entitlements
 

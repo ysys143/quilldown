@@ -1,6 +1,6 @@
-name: MarkdownViewser
+name: Quilldown
 options:
-  bundleIdPrefix: com.viewser
+  bundleIdPrefix: com.quilldown
   deploymentTarget:
     macOS: "14.0"
   xcodeVersion: "16.0"
@@ -15,36 +15,36 @@ settings:
     GENERATE_INFOPLIST_FILE: false
 
 targets:
-  MarkdownViewser:
+  Quilldown:
     type: application
     platform: macOS
     sources:
-      - path: MarkdownViewser
+      - path: Quilldown
         excludes:
           - Resources/**
           - Info.plist
     resources:
-      - path: MarkdownViewser/Assets.xcassets
+      - path: Quilldown/Assets.xcassets
     postCompileScripts:
       - name: Copy Web Resources
         script: |
-          rsync -a --delete "${SRCROOT}/MarkdownViewser/Resources/" "${BUILT_PRODUCTS_DIR}/${PRODUCT_NAME}.app/Contents/Resources/"
+          rsync -a --delete "${SRCROOT}/Quilldown/Resources/" "${BUILT_PRODUCTS_DIR}/${PRODUCT_NAME}.app/Contents/Resources/"
         basedOnDependencyAnalysis: false
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.viewser.markdownviewser
-        PRODUCT_NAME: "Markdown Viewser"
-        INFOPLIST_FILE: MarkdownViewser/Info.plist
-        CODE_SIGN_ENTITLEMENTS: MarkdownViewser/MarkdownViewser.entitlements
+        PRODUCT_BUNDLE_IDENTIFIER: com.quilldown.app
+        PRODUCT_NAME: "Quilldown"
+        INFOPLIST_FILE: Quilldown/Info.plist
+        CODE_SIGN_ENTITLEMENTS: Quilldown/Quilldown.entitlements
         CODE_SIGN_STYLE: Automatic
         ENABLE_HARDENED_RUNTIME: true
         COMBINE_HIDPI_IMAGES: true
     info:
-      path: MarkdownViewser/Info.plist
+      path: Quilldown/Info.plist
       properties:
         CFBundleDocumentTypes:
           - CFBundleTypeName: Markdown Document
-            CFBundleTypeRole: Viewer
+            CFBundleTypeRole: Editor
             LSHandlerRank: Alternate
             LSItemContentTypes:
               - net.daringfireball.markdown

@@ -7,14 +7,13 @@ extension Notification.Name {
 }
 
 @main
-struct MarkdownViewserApp: App {
+struct QuilldownApp: App {
     var body: some Scene {
-        DocumentGroup(viewing: MarkdownDocument.self) { config in
-            ContentView(document: config.document, fileURL: config.fileURL)
+        DocumentGroup(newDocument: MarkdownDocument()) { config in
+            ContentView(document: config.$document, fileURL: config.fileURL)
         }
+        .defaultSize(width: 1100, height: 750)
         .commands {
-            CommandGroup(replacing: .newItem) { }
-
             CommandGroup(after: .toolbar) {
                 Button("Zoom In") {
                     if let wv = WebViewStore.shared.activeWebView {

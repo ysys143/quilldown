@@ -1,0 +1,423 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="color-scheme" content="light dark">
+    <link rel="stylesheet" href="github-markdown.css">
+    <link rel="stylesheet" href="katex.min.css">
+    <link rel="stylesheet" href="prism.min.css" id="prism-light">
+    <link rel="stylesheet" href="prism-tomorrow.min.css" id="prism-dark" disabled>
+    <style>
+        body {
+            margin: 0;
+            padding: 16px 32px;
+            background: transparent;
+        }
+        .markdown-body {
+            max-width: 980px;
+            margin: 0 auto;
+            font-size: 14px;
+        }
+        /* KaTeX dark mode */
+        @media (prefers-color-scheme: dark) {
+            .katex { color: #c9d1d9; }
+        }
+        /* Mermaid container */
+        .mermaid-container {
+            text-align: center;
+            margin: 16px 0;
+        }
+        .mermaid-error {
+            color: #d73a49;
+            background: #ffeef0;
+            padding: 8px 12px;
+            border-radius: 6px;
+            font-family: monospace;
+            font-size: 14px;
+        }
+        @media (prefers-color-scheme: dark) {
+            .mermaid-error {
+                color: #f85149;
+                background: #3d1f28;
+            }
+        }
+        /* Sync highlight */
+        .sync-highlight {
+            background-color: rgba(255, 213, 79, 0.25);
+            border-left: 3px solid #ffd54f;
+            transition: background-color 0.15s ease;
+        }
+        @media (prefers-color-scheme: dark) {
+            .sync-highlight {
+                background-color: rgba(255, 213, 79, 0.15);
+                border-left: 3px solid #ffa726;
+            }
+        }
+    </style>
+</head>
+<body>
+    <article class="markdown-body" id="content"></article>
+
+    <script src="markdown-it.min.js"></script>
+    <script src="markdown-it-task-lists.min.js"></script>
+    <script src="katex.min.js"></script>
+    <script src="katex-auto-render.min.js"></script>
+    <script src="prism.min.js"></script>
+    <!-- Prism language components -->
+    <script src="prism-markup.min.js"></script>
+    <script src="prism-css.min.js"></script>
+    <script src="prism-clike.min.js"></script>
+    <script src="prism-javascript.min.js"></script>
+    <script src="prism-bash.min.js"></script>
+    <script src="prism-c.min.js"></script>
+    <script src="prism-cpp.min.js"></script>
+    <script src="prism-go.min.js"></script>
+    <script src="prism-java.min.js"></script>
+    <script src="prism-json.min.js"></script>
+    <script src="prism-kotlin.min.js"></script>
+    <script src="prism-markdown.min.js"></script>
+    <script src="prism-python.min.js"></script>
+    <script src="prism-rust.min.js"></script>
+    <script src="prism-sql.min.js"></script>
+    <script src="prism-swift.min.js"></script>
+    <script src="prism-typescript.min.js"></script>
+    <script src="prism-yaml.min.js"></script>
+
+    <script>
+        // Initialize markdown-it
+        const md = window.markdownit({
+            html: true,
+            linkify: true,
+            typographer: true,
+            highlight: function(str, lang) {
+                if (lang === 'mermaid') {
+                    return ''; // handled separately
+                }
+                const langClass = lang ? `language-${lang}` : '';
+                const escaped = str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+                return `<pre class="language-${lang || 'none'}"><code class="${langClass}">${escaped}</code></pre>`;
+            }
+        });
+
+        // Allow local file URLs in markdown links/images.
+        // markdown-it blocks file:// by default for security.
+        const defaultValidateLink = md.validateLink ? md.validateLink.bind(md) : null;
+        if (defaultValidateLink) {
+            md.validateLink = function(url) {
+                if (/^(file|localfile):\/\//i.test(url)) return true;
+                return defaultValidateLink(url);
+            };
+        }
+
+        // Enable task list plugin
+        if (typeof markdownitTaskLists !== 'undefined') {
+            md.use(markdownitTaskLists);
+        }
+
+        // Add IDs to headings for TOC navigation (with duplicate handling)
+        const usedIds = {};
+        md.renderer.rules.heading_open = function(tokens, idx) {
+            const token = tokens[idx];
+            const level = token.tag;
+            const nextToken = tokens[idx + 1];
+            const text = nextToken ? nextToken.content : '';
+            let id = text.toLowerCase().replace(/\s+/g, '-').replace(/[^\p{L}\p{N}_-]/gu, '');
+            if (usedIds[id]) {
+                usedIds[id]++;
+                id = id + '-' + usedIds[id];
+            } else {
+                usedIds[id] = 1;
+            }
+            const lineAttr = token.map ? ` data-line="${token.map[0]}" data-line-end="${token.map[1]}"` : '';
+            return `<${level} id="${id}"${lineAttr}>`;
+        };
+
+        // Custom fence renderer for mermaid blocks
+        const defaultFence = md.renderer.rules.fence.bind(md.renderer.rules);
+        md.renderer.rules.fence = function(tokens, idx, options, env, self) {
+            const token = tokens[idx];
+            if (token.info.trim() === 'mermaid') {
+                const code = token.content.trim();
+                const lineAttr = token.map ? ` data-line="${token.map[0]}" data-line-end="${token.map[1]}"` : '';
+                return `<div class="mermaid-container"${lineAttr}><pre class="mermaid">${code}</pre></div>`;
+            }
+            if (token.info.trim() === 'math') {
+                try {
+                    const lineAttr = token.map ? ` data-line="${token.map[0]}" data-line-end="${token.map[1]}"` : '';
+                    return `<div class="math-block"${lineAttr}>${katex.renderToString(token.content.trim(), { displayMode: true, throwOnError: false })}</div>`;
+                } catch(e) {
+                    return `<div class="mermaid-error">${e.message}</div>`;
+                }
+            }
+            return defaultFence(tokens, idx, options, env, self);
+        };
+
+        // Source line mapping for scroll sync
+        md.core.ruler.push('source_line_mapping', function(state) {
+            for (const token of state.tokens) {
+                if (token.map && token.type.endsWith('_open')) {
+                    token.attrSet('data-line', String(token.map[0]));
+                    token.attrSet('data-line-end', String(token.map[1]));
+                }
+            }
+        });
+
+        // Store reference to katex auto-render BEFORE defining render()
+        const katexRenderMathInElement = (typeof renderMathInElement === 'function') ? renderMathInElement : null;
+
+        // Set initial Prism theme based on color scheme
+        const isDarkMode = window.matchMedia('(prefers-color-scheme: dark)').matches;
+        document.getElementById('prism-light').disabled = isDarkMode;
+        document.getElementById('prism-dark').disabled = !isDarkMode;
+
+        // Base directory for resolving relative image paths
+        var _imageBaseDir = '';
+
+        function normalizeBaseDir(dir) {
+            if (!dir) return '';
+            const value = String(dir);
+            return value === '/' ? '/' : value.replace(/\/+$/, '');
+        }
+
+        function setImageBaseDir(dir) {
+            _imageBaseDir = normalizeBaseDir(dir);
+        }
+
+        // Resolve relative image paths to localfile:// URLs (DOM fallback)
+        function resolveRelativePaths(container, baseDir) {
+            const activeBaseDir = normalizeBaseDir(baseDir || _imageBaseDir || '');
+            const imgs = container.querySelectorAll('img');
+            for (const img of imgs) {
+                const src = img.getAttribute('src');
+                if (!src) continue;
+                if (src.startsWith('http://') || src.startsWith('https://') ||
+                    src.startsWith('localfile://') || src.startsWith('data:') || src.startsWith('blob:')) continue;
+                if (src.startsWith('file://')) {
+                    img.setAttribute('src', src.replace('file://', 'localfile://'));
+                    continue;
+                }
+                if (!activeBaseDir) continue;
+                img.setAttribute('src', 'localfile://' + activeBaseDir + '/' + src);
+            }
+        }
+
+        // Resolve relative image paths in HTML string BEFORE innerHTML assignment.
+        // Uses custom "localfile://" scheme handled by WKURLSchemeHandler,
+        // since WKWebView blocks file:// URLs in dynamically rendered content.
+        function resolveImagePathsInHTML(html, baseDir) {
+            const activeBaseDir = normalizeBaseDir(baseDir || _imageBaseDir || '');
+            if (activeBaseDir) {
+                // Handle src="..." (double quotes)
+                html = html.replace(
+                    /(<img\s[^>]*?\bsrc\s*=\s*")(?!https?:\/\/|file:\/\/|localfile:\/\/|data:|blob:)([^"]+)(")/gi,
+                    '$1localfile://' + activeBaseDir + '/$2$3'
+                );
+                // Handle src='...' (single quotes from raw HTML in markdown)
+                html = html.replace(
+                    /(<img\s[^>]*?\bsrc\s*=\s*')(?!https?:\/\/|file:\/\/|localfile:\/\/|data:|blob:)([^']+)(')/gi,
+                    '$1localfile://' + activeBaseDir + '/$2$3'
+                );
+            }
+            // Handle src="..." (double quotes)
+            html = html.replace(
+                /(<img\s[^>]*?\bsrc\s*=\s*["'])file:\/\//gi,
+                '$1localfile://'
+            );
+            return html;
+        }
+
+        // Render function
+        function render(markdownText, imageBaseDir) {
+            // Reset heading IDs for each render
+            for (const key in usedIds) delete usedIds[key];
+
+            if (typeof imageBaseDir === 'string') {
+                setImageBaseDir(imageBaseDir);
+            }
+
+            const container = document.getElementById('content');
+            let html = md.render(markdownText);
+            html = resolveImagePathsInHTML(html, _imageBaseDir);
+            container.innerHTML = html;
+            resolveRelativePaths(container, _imageBaseDir);
+
+            // Apply Prism.js highlighting
+            Prism.highlightAllUnder(container);
+
+            // Apply KaTeX auto-render
+            if (katexRenderMathInElement) {
+                katexRenderMathInElement(container, {
+                    delimiters: [
+                        {left: '$$', right: '$$', display: true},
+                        {left: '$', right: '$', display: false},
+                        {left: '\\(', right: '\\)', display: false},
+                        {left: '\\[', right: '\\]', display: true}
+                    ],
+                    throwOnError: false,
+                    strict: false
+                });
+            }
+
+            // Lazy load Mermaid if needed
+            const mermaidBlocks = container.querySelectorAll('.mermaid');
+            if (mermaidBlocks.length > 0) {
+                loadMermaid(mermaidBlocks);
+            }
+
+        }
+
+        // --- Scroll Sync ---
+
+        function getVisibleTopLine() {
+            const elements = document.querySelectorAll('[data-line]');
+            for (const el of elements) {
+                const rect = el.getBoundingClientRect();
+                if (rect.top >= -10) {
+                    return parseInt(el.getAttribute('data-line'));
+                }
+            }
+            if (elements.length > 0) {
+                return parseInt(elements[elements.length - 1].getAttribute('data-line'));
+            }
+            return 0;
+        }
+
+        function scrollToSourceLine(line) {
+            window._syncScrolling = true;
+            const elements = document.querySelectorAll('[data-line]');
+            let closest = null;
+            let closestDiff = Infinity;
+            for (const el of elements) {
+                const elLine = parseInt(el.getAttribute('data-line'));
+                const diff = Math.abs(elLine - line);
+                if (diff < closestDiff) {
+                    closestDiff = diff;
+                    closest = el;
+                }
+            }
+            if (closest) {
+                closest.scrollIntoView({ behavior: 'instant', block: 'start' });
+            }
+            setTimeout(function() { window._syncScrolling = false; }, 150);
+        }
+
+        function highlightLines(startLine, endLine) {
+            clearHighlight();
+            const elements = document.querySelectorAll('[data-line]');
+            for (const el of elements) {
+                const elLine = parseInt(el.getAttribute('data-line'));
+                if (elLine >= startLine && elLine < endLine) {
+                    el.classList.add('sync-highlight');
+                }
+            }
+        }
+
+        function clearHighlight() {
+            document.querySelectorAll('.sync-highlight').forEach(function(el) {
+                el.classList.remove('sync-highlight');
+            });
+        }
+
+        // Scroll event -> post to Swift
+        var _scrollTimeout;
+        window.addEventListener('scroll', function() {
+            if (window._syncScrolling) return;
+            clearTimeout(_scrollTimeout);
+            _scrollTimeout = setTimeout(function() {
+                var line = getVisibleTopLine();
+                if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.scrollSync) {
+                    window.webkit.messageHandlers.scrollSync.postMessage({type: 'scroll', line: line});
+                }
+            }, 50);
+        });
+
+        // Selection event -> post to Swift
+        document.addEventListener('mouseup', function() {
+            var sel = window.getSelection();
+            if (!sel || sel.isCollapsed) {
+                clearHighlight();
+                if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.scrollSync) {
+                    window.webkit.messageHandlers.scrollSync.postMessage({type: 'selectionClear'});
+                }
+                return;
+            }
+            function findSourceLine(node) {
+                while (node) {
+                    if (node.nodeType === 1 && node.getAttribute && node.getAttribute('data-line')) {
+                        return node;
+                    }
+                    node = node.parentNode;
+                }
+                return null;
+            }
+            var anchorEl = findSourceLine(sel.anchorNode);
+            var focusEl = findSourceLine(sel.focusNode);
+            if (anchorEl && focusEl) {
+                var startLine = parseInt(anchorEl.getAttribute('data-line'));
+                var endLine = parseInt(focusEl.getAttribute('data-line-end') || focusEl.getAttribute('data-line'));
+                if (startLine > endLine) {
+                    var tmp = startLine; startLine = endLine; endLine = tmp;
+                }
+                if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.scrollSync) {
+                    window.webkit.messageHandlers.scrollSync.postMessage({type: 'selection', startLine: startLine, endLine: endLine});
+                }
+            }
+        });
+
+        // Lazy load Mermaid
+        async function loadMermaid(blocks) {
+            if (!window.mermaidLoaded) {
+                const script = document.createElement('script');
+                script.src = 'mermaid.min.js';
+                script.onload = function() {
+                    const isDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+                    mermaid.initialize({
+                        startOnLoad: false,
+                        theme: isDark ? 'dark' : 'default',
+                        securityLevel: 'strict'
+                    });
+                    window.mermaidLoaded = true;
+                    renderMermaidBlocks(blocks);
+                };
+                document.head.appendChild(script);
+            } else {
+                renderMermaidBlocks(blocks);
+            }
+        }
+
+        async function renderMermaidBlocks(blocks) {
+            for (const block of blocks) {
+                const id = 'mermaid-' + Math.random().toString(36).substr(2, 9);
+                try {
+                    const code = block.textContent;
+                    const { svg } = await mermaid.render(id, code);
+                    block.innerHTML = svg;
+                } catch(e) {
+                    block.innerHTML = `<div class="mermaid-error">Mermaid Error: ${e.message}</div>`;
+                    // Clean up orphaned elements mermaid leaves in the DOM on error
+                    document.getElementById(id)?.remove();
+                    document.getElementById('d' + id)?.remove();
+                }
+            }
+        }
+
+        // Listen for dark mode changes
+        window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', (e) => {
+            // Toggle Prism themes
+            document.getElementById('prism-light').disabled = e.matches;
+            document.getElementById('prism-dark').disabled = !e.matches;
+
+            // Re-initialize Mermaid theme
+            if (window.mermaidLoaded) {
+                mermaid.initialize({
+                    startOnLoad: false,
+                    theme: e.matches ? 'dark' : 'default',
+                    securityLevel: 'strict'
+                });
+            }
+        });
+
+    </script>
+</body>
+</html>

@@ -1,13 +1,13 @@
 #!/bin/bash
 set -euo pipefail
 
-APP_NAME="Markdown Viewser"
-DMG_NAME="MarkdownViewser"
+APP_NAME="Quilldown"
+DMG_NAME="Quilldown"
 BUILD_DIR="build/Release"
 DMG_DIR="build/dmg"
 
 echo "Building Release..."
-xcodebuild -scheme MarkdownViewser \
+xcodebuild -scheme Quilldown \
   -configuration Release \
   -derivedDataPath build \
   -destination 'platform=macOS' \

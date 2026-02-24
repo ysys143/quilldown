@@ -10,6 +10,10 @@ struct MarkdownDocument: FileDocument {
         ]
     }
 
+    static var writableContentTypes: [UTType] {
+        [.init(filenameExtension: "md")!]
+    }
+
     var text: String
 
     init(text: String = "") {
