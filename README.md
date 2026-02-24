@@ -1,6 +1,6 @@
 # Quilldown
 
-<img src="Quilldown/Assets.xcassets/AppIcon.appiconset/app_icon_1024.png" width="128" height="128">
+<img src="assets/icon.png" width="128" height="128">
 
 A lightweight, native macOS markdown viewer and editor built with SwiftUI and WebKit. Write, preview, and export markdown with support for math equations, diagrams, and syntax highlighting—all without external dependencies.
 
