@@ -1,0 +1,61 @@
+name: MarkdownViewser
+options:
+  bundleIdPrefix: com.viewser
+  deploymentTarget:
+    macOS: "14.0"
+  xcodeVersion: "16.0"
+  createIntermediateGroups: true
+
+settings:
+  base:
+    SWIFT_VERSION: "5.9"
+    MACOSX_DEPLOYMENT_TARGET: "14.0"
+    MARKETING_VERSION: "1.0.0"
+    CURRENT_PROJECT_VERSION: "1"
+    GENERATE_INFOPLIST_FILE: false
+
+targets:
+  MarkdownViewser:
+    type: application
+    platform: macOS
+    sources:
+      - path: MarkdownViewser
+        excludes:
+          - Resources/**
+          - Info.plist
+    resources:
+      - path: MarkdownViewser/Assets.xcassets
+    postCompileScripts:
+      - name: Copy Web Resources
+        script: |
+          rsync -a --delete "${SRCROOT}/MarkdownViewser/Resources/" "${BUILT_PRODUCTS_DIR}/${PRODUCT_NAME}.app/Contents/Resources/"
+        basedOnDependencyAnalysis: false
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.viewser.markdownviewser
+        PRODUCT_NAME: "Markdown Viewser"
+        INFOPLIST_FILE: MarkdownViewser/Info.plist
+        CODE_SIGN_ENTITLEMENTS: MarkdownViewser/MarkdownViewser.entitlements
+        CODE_SIGN_STYLE: Automatic
+        ENABLE_HARDENED_RUNTIME: true
+        COMBINE_HIDPI_IMAGES: true
+    info:
+      path: MarkdownViewser/Info.plist
+      properties:
+        CFBundleDocumentTypes:
+          - CFBundleTypeName: Markdown Document
+            CFBundleTypeRole: Viewer
+            LSHandlerRank: Alternate
+            LSItemContentTypes:
+              - net.daringfireball.markdown
+        UTImportedTypeDeclarations:
+          - UTTypeIdentifier: net.daringfireball.markdown
+            UTTypeDescription: Markdown Document
+            UTTypeConformsTo:
+              - public.plain-text
+            UTTypeTagSpecification:
+              public.filename-extension:
+                - md
+                - markdown
+                - mdown
+                - mkd
