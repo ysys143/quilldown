@@ -92,14 +92,14 @@ Switch between three view modes using the toolbar buttons or keyboard shortcuts:
 Quilldown supports standard markdown syntax plus extended features:
 
 **Math Equations:**
-```
-Inline: $E = mc^2$
-Display: $$\int_0^\infty e^{-x^2} dx = \frac{\sqrt{\pi}}{2}$$
-LaTeX commands: \(x^2\) or \[a^2 + b^2 = c^2\]
-```
+
+Inline: $E = mc^2$ / Display:
+
+$$\int_0^\infty e^{-x^2} dx = \frac{\sqrt{\pi}}{2}$$
 
 **Diagrams (Mermaid):**
-```
+
+```mermaid
 graph TD
     A[Start] --> B[Process]
     B --> C{Decision}
@@ -108,14 +108,13 @@ graph TD
 ```
 
 **Code Blocks with Syntax Highlighting:**
-````
+
 ```swift
 let greeting = "Hello, Quilldown!"
 print(greeting)
 ```
-````
 
-**Supported Languages:** bash, c, cpp, css, diff, go, html, java, javascript, json, kotlin, lua, markdown, objective-c, php, python, ruby, rust, swift, typescript, xml, yaml, and more.
+Supports 18+ languages including Swift, Python, JavaScript, Go, Rust, TypeScript, and more.
 
 ### Sidebar Navigation
 
