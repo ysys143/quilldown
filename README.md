@@ -27,7 +27,7 @@ A lightweight, native macOS markdown viewer and editor built with SwiftUI and We
 ### Homebrew
 
 ```bash
-brew tap ysys143/quilldown
+brew tap ysys143/tap
 brew install --cask quilldown
 ```
 
