@@ -25,5 +25,14 @@ xcuserdata/
 *.dSYM.zip
 *.dSYM
 
+# Tauri / Rust
+quilldown-tauri/src-tauri/target/
+quilldown-tauri/node_modules/
+quilldown-tauri/src-tauri/gen/
+# Copied shared resources (generated at build time)
+quilldown-tauri/src/*.js
+quilldown-tauri/src/*.css
+quilldown-tauri/src/fonts/
+
 # OMC
 .omc/
