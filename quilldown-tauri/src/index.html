@@ -1,0 +1,341 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="color-scheme" content="light dark">
+    <title>Quilldown</title>
+    <link rel="stylesheet" href="github-markdown.css">
+    <link rel="stylesheet" href="katex.min.css">
+    <link rel="stylesheet" href="prism.min.css" id="prism-light">
+    <link rel="stylesheet" href="prism-tomorrow.min.css" id="prism-dark" disabled>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            display: flex;
+            height: 100vh;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+            background: var(--bg);
+            color: var(--fg);
+        }
+        :root {
+            --bg: #ffffff;
+            --fg: #1f2328;
+            --border: #d1d9e0;
+            --editor-bg: #ffffff;
+            --toolbar-bg: #f6f8fa;
+        }
+        @media (prefers-color-scheme: dark) {
+            :root {
+                --bg: #0d1117;
+                --fg: #e6edf3;
+                --border: #30363d;
+                --editor-bg: #0d1117;
+                --toolbar-bg: #161b22;
+            }
+        }
+        #toolbar {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 40px;
+            background: var(--toolbar-bg);
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            padding: 0 12px;
+            gap: 8px;
+            z-index: 10;
+            -webkit-user-select: none;
+            user-select: none;
+        }
+        #toolbar button {
+            padding: 4px 12px;
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            background: var(--bg);
+            color: var(--fg);
+            cursor: pointer;
+            font-size: 13px;
+        }
+        #toolbar button:hover { opacity: 0.8; }
+        #toolbar button.active {
+            background: #0969da;
+            color: white;
+            border-color: #0969da;
+        }
+        @media (prefers-color-scheme: dark) {
+            #toolbar button.active {
+                background: #388bfd;
+                border-color: #388bfd;
+            }
+        }
+        #toolbar .spacer { flex: 1; }
+        #toolbar .filename {
+            font-size: 13px;
+            opacity: 0.7;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        #container {
+            display: flex;
+            margin-top: 40px;
+            height: calc(100vh - 40px);
+            width: 100%;
+        }
+        #editor {
+            width: 50%;
+            height: 100%;
+            border: none;
+            resize: none;
+            padding: 16px;
+            font-family: "SF Mono", "Cascadia Code", "Fira Code", Menlo, Consolas, monospace;
+            font-size: 14px;
+            line-height: 1.6;
+            background: var(--editor-bg);
+            color: var(--fg);
+            outline: none;
+            tab-size: 4;
+        }
+        #divider {
+            width: 1px;
+            background: var(--border);
+        }
+        #preview {
+            width: 50%;
+            height: 100%;
+            overflow-y: auto;
+            padding: 16px 32px;
+        }
+        .markdown-body {
+            max-width: 980px;
+            margin: 0 auto;
+            font-size: 14px;
+        }
+        @media (prefers-color-scheme: dark) {
+            .katex { color: #c9d1d9; }
+        }
+        /* View modes */
+        body.mode-editor #divider,
+        body.mode-editor #preview { display: none; }
+        body.mode-editor #editor { width: 100%; }
+        body.mode-preview #editor,
+        body.mode-preview #divider { display: none; }
+        body.mode-preview #preview { width: 100%; }
+    </style>
+</head>
+<body class="mode-split">
+    <div id="toolbar">
+        <button id="btn-open" title="Open file">Open</button>
+        <button id="btn-save" title="Save file">Save</button>
+        <span class="spacer"></span>
+        <span class="filename" id="filename">Untitled</span>
+        <span class="spacer"></span>
+        <button id="btn-editor" title="Editor only">Editor</button>
+        <button id="btn-split" class="active" title="Split view">Split</button>
+        <button id="btn-preview" title="Preview only">Preview</button>
+    </div>
+    <div id="container">
+        <textarea id="editor" spellcheck="false" placeholder="Write markdown here..."></textarea>
+        <div id="divider"></div>
+        <article id="preview" class="markdown-body"></article>
+    </div>
+
+    <script src="markdown-it.min.js"></script>
+    <script src="markdown-it-task-lists.min.js"></script>
+    <script src="katex.min.js"></script>
+    <script src="katex-auto-render.min.js"></script>
+    <script src="prism.min.js"></script>
+    <script src="prism-markup.min.js"></script>
+    <script src="prism-css.min.js"></script>
+    <script src="prism-clike.min.js"></script>
+    <script src="prism-javascript.min.js"></script>
+    <script src="prism-bash.min.js"></script>
+    <script src="prism-c.min.js"></script>
+    <script src="prism-cpp.min.js"></script>
+    <script src="prism-go.min.js"></script>
+    <script src="prism-java.min.js"></script>
+    <script src="prism-json.min.js"></script>
+    <script src="prism-kotlin.min.js"></script>
+    <script src="prism-markdown.min.js"></script>
+    <script src="prism-python.min.js"></script>
+    <script src="prism-rust.min.js"></script>
+    <script src="prism-sql.min.js"></script>
+    <script src="prism-swift.min.js"></script>
+    <script src="prism-typescript.min.js"></script>
+    <script src="prism-yaml.min.js"></script>
+
+    <script type="module">
+        const { invoke } = window.__TAURI__.core;
+        const { open, save } = window.__TAURI__.dialog;
+
+        // markdown-it setup
+        const md = window.markdownit({
+            html: true,
+            linkify: true,
+            typographer: true,
+            highlight: function(str, lang) {
+                if (lang === 'mermaid') return '';
+                const escaped = str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+                return `<pre class="language-${lang || 'none'}"><code class="language-${lang || ''}">${escaped}</code></pre>`;
+            }
+        });
+        if (typeof markdownitTaskLists !== 'undefined') md.use(markdownitTaskLists);
+
+        // Mermaid fence
+        const defaultFence = md.renderer.rules.fence.bind(md.renderer.rules);
+        md.renderer.rules.fence = function(tokens, idx, options, env, self) {
+            const token = tokens[idx];
+            if (token.info.trim() === 'mermaid') {
+                return `<div class="mermaid-container"><pre class="mermaid">${token.content.trim()}</pre></div>`;
+            }
+            if (token.info.trim() === 'math') {
+                try {
+                    return `<div class="math-block">${katex.renderToString(token.content.trim(), { displayMode: true, throwOnError: false })}</div>`;
+                } catch(e) {
+                    return `<div style="color:red">${e.message}</div>`;
+                }
+            }
+            return defaultFence(tokens, idx, options, env, self);
+        };
+
+        const katexRender = (typeof renderMathInElement === 'function') ? renderMathInElement : null;
+
+        // Prism theme
+        const isDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+        document.getElementById('prism-light').disabled = isDark;
+        document.getElementById('prism-dark').disabled = !isDark;
+        window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', (e) => {
+            document.getElementById('prism-light').disabled = e.matches;
+            document.getElementById('prism-dark').disabled = !e.matches;
+        });
+
+        // Elements
+        const editor = document.getElementById('editor');
+        const preview = document.getElementById('preview');
+        const filenameEl = document.getElementById('filename');
+
+        let currentPath = null;
+        let renderTimeout;
+
+        // Render markdown
+        function render() {
+            preview.innerHTML = md.render(editor.value);
+            Prism.highlightAllUnder(preview);
+            if (katexRender) {
+                katexRender(preview, {
+                    delimiters: [
+                        {left: '$$', right: '$$', display: true},
+                        {left: '$', right: '$', display: false},
+                        {left: '\\(', right: '\\)', display: false},
+                        {left: '\\[', right: '\\]', display: true}
+                    ],
+                    throwOnError: false,
+                    strict: false
+                });
+            }
+            // Lazy load mermaid
+            const mermaidBlocks = preview.querySelectorAll('.mermaid');
+            if (mermaidBlocks.length > 0) loadMermaid(mermaidBlocks);
+        }
+
+        async function loadMermaid(blocks) {
+            if (!window.mermaidLoaded) {
+                const script = document.createElement('script');
+                script.src = 'mermaid.min.js';
+                script.onload = () => {
+                    const dark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+                    mermaid.initialize({ startOnLoad: false, theme: dark ? 'dark' : 'default', securityLevel: 'strict' });
+                    window.mermaidLoaded = true;
+                    renderMermaidBlocks(blocks);
+                };
+                document.head.appendChild(script);
+            } else {
+                renderMermaidBlocks(blocks);
+            }
+        }
+
+        async function renderMermaidBlocks(blocks) {
+            for (const block of blocks) {
+                const id = 'mermaid-' + Math.random().toString(36).substr(2, 9);
+                try {
+                    const { svg } = await mermaid.render(id, block.textContent);
+                    block.innerHTML = svg;
+                } catch(e) {
+                    block.innerHTML = `<div style="color:red">Mermaid Error: ${e.message}</div>`;
+                    document.getElementById(id)?.remove();
+                }
+            }
+        }
+
+        editor.addEventListener('input', () => {
+            clearTimeout(renderTimeout);
+            renderTimeout = setTimeout(render, 200);
+        });
+
+        // Tab key inserts tab
+        editor.addEventListener('keydown', (e) => {
+            if (e.key === 'Tab') {
+                e.preventDefault();
+                const start = editor.selectionStart;
+                editor.value = editor.value.substring(0, start) + '\t' + editor.value.substring(editor.selectionEnd);
+                editor.selectionStart = editor.selectionEnd = start + 1;
+            }
+        });
+
+        // File operations
+        document.getElementById('btn-open').addEventListener('click', async () => {
+            const path = await open({
+                filters: [{ name: 'Markdown', extensions: ['md', 'markdown', 'mdown', 'mkd'] }]
+            });
+            if (path) {
+                const content = await invoke('read_file', { path });
+                editor.value = content;
+                currentPath = path;
+                filenameEl.textContent = path.split(/[\\/]/).pop();
+                render();
+            }
+        });
+
+        document.getElementById('btn-save').addEventListener('click', async () => {
+            let path = currentPath;
+            if (!path) {
+                path = await save({
+                    filters: [{ name: 'Markdown', extensions: ['md'] }],
+                    defaultPath: 'untitled.md'
+                });
+            }
+            if (path) {
+                await invoke('write_file', { path, content: editor.value });
+                currentPath = path;
+                filenameEl.textContent = path.split(/[\\/]/).pop();
+            }
+        });
+
+        // View mode buttons
+        function setMode(mode) {
+            document.body.className = `mode-${mode}`;
+            document.getElementById('btn-editor').classList.toggle('active', mode === 'editor');
+            document.getElementById('btn-split').classList.toggle('active', mode === 'split');
+            document.getElementById('btn-preview').classList.toggle('active', mode === 'preview');
+        }
+        document.getElementById('btn-editor').addEventListener('click', () => setMode('editor'));
+        document.getElementById('btn-split').addEventListener('click', () => setMode('split'));
+        document.getElementById('btn-preview').addEventListener('click', () => setMode('preview'));
+
+        // Keyboard shortcuts
+        document.addEventListener('keydown', (e) => {
+            if ((e.ctrlKey || e.metaKey) && e.key === '1') { e.preventDefault(); setMode('editor'); }
+            if ((e.ctrlKey || e.metaKey) && e.key === '2') { e.preventDefault(); setMode('split'); }
+            if ((e.ctrlKey || e.metaKey) && e.key === '3') { e.preventDefault(); setMode('preview'); }
+            if ((e.ctrlKey || e.metaKey) && e.key === 'o') { e.preventDefault(); document.getElementById('btn-open').click(); }
+            if ((e.ctrlKey || e.metaKey) && e.key === 's') { e.preventDefault(); document.getElementById('btn-save').click(); }
+        });
+
+        // Initial render
+        render();
+    </script>
+</body>
+</html>

@@ -1,0 +1,17 @@
+{
+  "name": "quilldown",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "tauri": "tauri",
+    "copy-resources": "node scripts/copy-resources.js",
+    "dev": "npm run copy-resources && tauri dev",
+    "build": "tauri build"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2"
+  },
+  "dependencies": {
+    "@tauri-apps/api": "^2"
+  }
+}
