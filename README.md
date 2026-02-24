@@ -7,7 +7,7 @@ A lightweight, native macOS markdown viewer and editor built with SwiftUI and We
 ## Features
 
 - **Multiple View Modes**: Editor-only, preview-only, or split view with synchronized scrolling
-- **Math Equations**: Full support for LaTeX via KaTeX with both inline ($...$) and display ($$...$$, \(...\), \[...\]) syntax
+- **Math Equations**: Full support for LaTeX via KaTeX with both inline (`$...$`) and display (`$$...$$`, `\(...\)`, `\[...\]`) syntax
 - **Diagrams**: Create flowcharts, sequence diagrams, class diagrams, and more with Mermaid
 - **Syntax Highlighting**: Code blocks with 18+ language support via Prism.js
 - **Table of Contents**: Auto-generated sidebar with clickable navigation to headings
