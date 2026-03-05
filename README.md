@@ -202,24 +202,9 @@ A: File watching works best with standard file write operations. Some editors wi
 **Q: Can I use Quilldown in a terminal-only environment?**
 A: No, Quilldown is a native macOS GUI application and requires a graphical display.
 
-## Cross-Platform (Windows / Linux)
+## Windows
 
-A cross-platform version built with [Tauri](https://tauri.app/) is available in the `quilldown-tauri/` directory. It reuses the same markdown rendering engine (markdown-it, KaTeX, Prism.js, Mermaid) as the native macOS app.
-
-**Requirements:**
-- [Rust](https://rustup.rs/)
-- [Node.js](https://nodejs.org/) 18+
-
-**Build:**
-
-```bash
-cd quilldown-tauri
-npm install
-npm run copy-resources
-npx tauri build
-```
-
-The built installer will be in `src-tauri/target/release/bundle/`.
+A Windows version (`Quilldown.exe`) is included in the repository root.
 
 ## Development
 
@@ -231,21 +216,8 @@ Quilldown/               # macOS native app (SwiftUI + WebKit)
 ├── Resources/           # Shared web assets (HTML, CSS, JavaScript)
 ├── Assets.xcassets/     # App icons and images
 └── Info.plist           # App metadata
-
-quilldown-tauri/         # Cross-platform app (Tauri + WebView)
-├── src/                 # Frontend (HTML/JS)
-├── src-tauri/           # Rust backend
-└── package.json
+Quilldown.exe            # Windows version
 ```
-
-### CI/CD
-
-GitHub Actions automatically builds on every push and PR:
-- **macOS**: Native Swift build with xcodebuild
-- **Windows**: Tauri build producing MSI/EXE installers
-- **Linux**: Tauri build producing DEB/AppImage packages
-
-Build artifacts are available for download from the Actions tab.
 
 ### Building for Distribution
 
