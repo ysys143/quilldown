@@ -204,7 +204,14 @@ A: No, Quilldown is a native macOS GUI application and requires a graphical disp
 
 ## Windows
 
-A Windows version (`Quilldown.exe`) is included in the repository root.
+A Windows version (`Quilldown.exe`) is included in the repository root and available in [Releases](https://github.com/ysys143/quilldown/releases).
+
+> **[WARN] This executable is not code-signed.** Windows SmartScreen will likely block it on first run. You must manually allow it:
+>
+> 1. When the "Windows protected your PC" dialog appears, click **"More info"** -> **"Run anyway"**
+> 2. Or right-click the file -> **Properties** -> check **"Unblock"** -> OK
+>
+> If you are uncomfortable with this, you can **build from source** instead -- see the [Development](#development) section.
 
 ## Development
 
