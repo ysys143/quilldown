@@ -10,6 +10,7 @@ struct MarkdownEditorView: NSViewRepresentable {
         var isUpdating = false
         var isSyncScrolling = false
         weak var scrollView: NSScrollView?
+        let highlighter = MarkdownHighlighter()
 
         init(parent: MarkdownEditorView) {
             self.parent = parent
@@ -18,6 +19,9 @@ struct MarkdownEditorView: NSViewRepresentable {
         func textDidChange(_ notification: Notification) {
             guard !isUpdating, let textView = notification.object as? NSTextView else { return }
             parent.text = textView.string
+            if let storage = textView.textStorage {
+                highlighter.highlight(textStorage: storage)
+            }
         }
 
         func textViewDidChangeSelection(_ notification: Notification) {
@@ -142,17 +146,37 @@ struct MarkdownEditorView: NSViewRepresentable {
         textView.isEditable = true
         textView.isSelectable = true
         textView.allowsUndo = true
-        textView.isRichText = false
+        // Rich text is required so our syntax-highlighting attributes are
+        // actually rendered. We still suppress user-facing rich-text behaviors
+        // (link detection, smart quotes, etc.) so the content stays plain
+        // markdown — the attributes exist only as a visual overlay.
+        textView.isRichText = true
+        textView.importsGraphics = false
+        textView.allowsImageEditing = false
         textView.font = NSFont.monospacedSystemFont(ofSize: 13, weight: .regular)
+        textView.textColor = .labelColor
         textView.isAutomaticQuoteSubstitutionEnabled = false
         textView.isAutomaticDashSubstitutionEnabled = false
         textView.isAutomaticTextReplacementEnabled = false
         textView.isAutomaticSpellingCorrectionEnabled = false
+        textView.isAutomaticLinkDetectionEnabled = false
+        textView.isAutomaticDataDetectionEnabled = false
         textView.usesFindBar = true
         textView.isIncrementalSearchingEnabled = true
-        textView.textContainerInset = NSSize(width: 12, height: 12)
+        textView.textContainerInset = NSSize(width: 32, height: 16)
+        // Remove the default 5pt glyph-edge padding so the text's left edge
+        // lines up with the preview's 32px body padding.
+        textView.textContainer?.lineFragmentPadding = 0
         textView.delegate = context.coordinator
+
         textView.string = text
+
+        // Apply syntax highlighting to the initial content. Subsequent edits
+        // flow through `textDidChange` which re-highlights the document, and
+        // external reloads are covered by `updateNSView`.
+        if let storage = textView.textStorage {
+            context.coordinator.highlighter.highlight(textStorage: storage)
+        }
 
         textView.autoresizingMask = [.width]
         textView.textContainer?.widthTracksTextView = true
@@ -191,6 +215,9 @@ struct MarkdownEditorView: NSViewRepresentable {
             let selectedRanges = textView.selectedRanges
             textView.string = text
             textView.selectedRanges = selectedRanges
+            if let storage = textView.textStorage {
+                context.coordinator.highlighter.highlight(textStorage: storage)
+            }
             context.coordinator.isUpdating = false
         }
     }

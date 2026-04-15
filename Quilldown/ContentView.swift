@@ -12,6 +12,9 @@ struct ContentView: View {
     @State private var viewMode: ViewMode = .preview
     @State private var singleViewWidth: CGFloat = 0
     @State private var tocUpdateWorkItem: DispatchWorkItem?
+    @State private var isSearchVisible = false
+    @State private var searchQuery = ""
+    @State private var keyMonitor: Any?
 
     var body: some View {
         HStack(spacing: 0) {
@@ -131,6 +134,23 @@ struct ContentView: View {
                 .help("Zoom Out")
                 .keyboardShortcut("-", modifiers: .command)
             }
+
+            // Toolbar find affordance. When inactive, shows a single
+            // magnifying-glass button. When Cmd+F (or the button) activates
+            // search in preview/split, the button is replaced by a native
+            // NSSearchField (same look as Notes.app) in the same slot.
+            if isSearchVisible && viewMode != .editor {
+                ToolbarItem(placement: .primaryAction) {
+                    PreviewSearchBar(query: $searchQuery, isVisible: $isSearchVisible)
+                }
+            } else {
+                ToolbarItem(placement: .primaryAction) {
+                    Button(action: invokeFind) {
+                        Image(systemName: "magnifyingglass")
+                    }
+                    .help("Find (Cmd+F)")
+                }
+            }
         }
         // Hidden buttons for keyboard shortcuts
         .background {
@@ -149,10 +169,67 @@ struct ContentView: View {
             .frame(width: 0, height: 0)
             .opacity(0)
         }
+        .onAppear { installKeyMonitor() }
+        .onDisappear { removeKeyMonitor() }
+        .onChange(of: viewMode) { _, newMode in
+            if newMode == .editor && isSearchVisible {
+                isSearchVisible = false
+                searchQuery = ""
+                WebViewStore.shared.clearPreviewFind()
+            }
+        }
+    }
+
+    // Intercepts Cmd+F at the window level. SwiftUI apps don't install the
+    // default Edit ▸ Find menu, so NSTextView's `usesFindBar = true` has no
+    // way to receive `performFindPanelAction:` unless we dispatch it manually.
+    // In editor mode we send the show-find-panel action to the first responder
+    // (NSTextView picks it up). In preview/split we show our floating bar.
+    private func installKeyMonitor() {
+        guard keyMonitor == nil else { return }
+        keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
+            // Compare by hardware keyCode so Hangul/CJK input methods still
+            // trigger the shortcut (characters would be "ㄹ" instead of "f").
+            // kVK_ANSI_F == 3.
+            let cmdF = event.modifierFlags.contains(.command)
+                && event.keyCode == 3
+            guard cmdF else { return event }
+            invokeFind()
+            return nil
+        }
+    }
+
+    /// Routes a Find request to the appropriate handler for the current view
+    /// mode. In editor mode, forwards to NSTextView's native Find bar; in
+    /// preview/split, surfaces the inline search field in the toolbar.
+    private func invokeFind() {
+        if viewMode == .editor {
+            let item = NSMenuItem()
+            item.tag = 1 // NSTextFinder.Action.showFindInterface
+            NSApp.sendAction(
+                #selector(NSResponder.performTextFinderAction(_:)),
+                to: nil,
+                from: item
+            )
+        } else {
+            isSearchVisible = true
+        }
+    }
+
+    private func removeKeyMonitor() {
+        if let monitor = keyMonitor {
+            NSEvent.removeMonitor(monitor)
+            keyMonitor = nil
+        }
     }
 
     @ViewBuilder
     private var detailContent: some View {
+        contentForMode
+    }
+
+    @ViewBuilder
+    private var contentForMode: some View {
         switch viewMode {
         case .editor:
             MarkdownEditorView(text: $document.text)
