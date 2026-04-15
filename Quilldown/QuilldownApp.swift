@@ -8,6 +8,17 @@ extension Notification.Name {
 
 @main
 struct QuilldownApp: App {
+
+    init() {
+        // Pre-warm a WKWebView with render.html fully loaded so the first
+        // document window can skip the ~600ms cold-start entirely. Runs on
+        // the main actor but returns immediately — the async load completes
+        // while the user is still picking a file in Finder.
+        Task { @MainActor in
+            WebViewStore.shared.warmup()
+        }
+    }
+
     var body: some Scene {
         DocumentGroup(newDocument: MarkdownDocument()) { config in
             ContentView(document: config.$document, fileURL: config.fileURL)

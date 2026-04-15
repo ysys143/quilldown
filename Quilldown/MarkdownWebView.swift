@@ -162,30 +162,57 @@ struct MarkdownWebView: NSViewRepresentable {
     func makeNSView(context: Context) -> WKWebView {
         let tMake = PerfLog.begin(.preview, "makeNSView")
         defer { PerfLog.end(tMake) }
-        let config = WKWebViewConfiguration()
-        config.setURLSchemeHandler(LocalFileSchemeHandler(), forURLScheme: LocalFileSchemeHandler.scheme)
 
-        let contentController = config.userContentController
-        contentController.add(context.coordinator, name: "scrollSync")
+        let coordinator = context.coordinator
+        coordinator.currentMarkdown = markdown
+        coordinator.baseDirectory = fileURL?.deletingLastPathComponent().path ?? ""
+        syncCoordinator?.previewCoordinator = coordinator
 
-        let webView = WKWebView(frame: .zero, configuration: config)
-        webView.setValue(false, forKey: "drawsBackground")
-        webView.navigationDelegate = context.coordinator
-        // GPU-accelerated layer-backed compositing for smoother scrolling and
-        // reduced main-thread paint cost.
-        webView.wantsLayer = true
+        // Try to claim a warmed WKWebView from the pool first. If the pool is
+        // empty (second window, or warmup hasn't run yet), fall back to
+        // creating a fresh instance.
+        let webView: WKWebView
+        let fromPool: Bool
+        if let pooled = WebViewStore.shared.acquireWebView() {
+            webView = pooled
+            fromPool = true
+        } else {
+            webView = WebViewStore.shared.makeConfiguredWebView()
+            fromPool = false
+        }
 
+        webView.navigationDelegate = coordinator
+        webView.configuration.userContentController.add(coordinator, name: "scrollSync")
         WebViewStore.shared.activeWebView = webView
-        #if DEBUG
-        webView.isInspectable = true
-        #endif
-        context.coordinator.webView = webView
-        context.coordinator.currentMarkdown = markdown
-        context.coordinator.baseDirectory = fileURL?.deletingLastPathComponent().path ?? ""
-        syncCoordinator?.previewCoordinator = context.coordinator
-        loadPage(in: webView, coordinator: context.coordinator)
+        coordinator.webView = webView
+
+        if fromPool {
+            if webView.isLoading == false {
+                // render.html already fully loaded during warmup. Skip
+                // loadFileURL entirely and render user content now.
+                coordinator.pageLoaded = true
+                coordinator.injectContent(into: webView)
+            } else {
+                // Pool hit but warmup hasn't finished the load yet. The new
+                // navigationDelegate (coordinator) will receive didFinish
+                // when the in-flight load completes — mark it so the render
+                // happens once. Don't call loadPage again: that would cancel
+                // the warmup's in-flight navigation and cost more than it
+                // saves.
+                coordinator.htmlLoadToken = PerfLog.begin(.preview, "htmlLoad.pool")
+            }
+        } else {
+            // Fresh cold-start path.
+            loadPage(in: webView, coordinator: coordinator)
+        }
 
         return webView
+    }
+
+    static func dismantleNSView(_ webView: WKWebView, coordinator: Coordinator) {
+        // Return the WKWebView to the pool so the next document can reuse it
+        // without paying cold-start costs again.
+        WebViewStore.shared.releaseWebView(webView)
     }
 
     func updateNSView(_ webView: WKWebView, context: Context) {
