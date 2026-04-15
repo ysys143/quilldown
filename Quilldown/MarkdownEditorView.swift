@@ -164,6 +164,9 @@ struct MarkdownEditorView: NSViewRepresentable {
         textView.usesFindBar = true
         textView.isIncrementalSearchingEnabled = true
         textView.textContainerInset = NSSize(width: 32, height: 16)
+        // Remove the default 5pt glyph-edge padding so the text's left edge
+        // lines up with the preview's 32px body padding.
+        textView.textContainer?.lineFragmentPadding = 0
         textView.delegate = context.coordinator
 
         textView.string = text
