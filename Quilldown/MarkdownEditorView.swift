@@ -17,8 +17,12 @@ struct MarkdownEditorView: NSViewRepresentable {
         }
 
         func textDidChange(_ notification: Notification) {
+            MarkdownHighlighter.debugLog("textDidChange fired, isUpdating=\(isUpdating)")
             guard !isUpdating, let textView = notification.object as? NSTextView else { return }
             parent.text = textView.string
+            if let storage = textView.textStorage {
+                highlighter.highlight(textStorage: storage)
+            }
         }
 
         func textViewDidChangeSelection(_ notification: Notification) {
@@ -163,10 +167,14 @@ struct MarkdownEditorView: NSViewRepresentable {
         textView.textContainerInset = NSSize(width: 12, height: 12)
         textView.delegate = context.coordinator
 
-        // Attach the syntax highlighter BEFORE inserting text so the initial
-        // load fires didProcessEditing and styles the document in one pass.
-        textView.textStorage?.delegate = context.coordinator.highlighter
         textView.string = text
+
+        // Apply syntax highlighting to the initial content. Subsequent edits
+        // flow through `textDidChange` which re-highlights the document.
+        MarkdownHighlighter.debugLog("makeNSView: setting string len=\(text.count), storage=\(textView.textStorage != nil)")
+        if let storage = textView.textStorage {
+            context.coordinator.highlighter.highlight(textStorage: storage)
+        }
 
         textView.autoresizingMask = [.width]
         textView.textContainer?.widthTracksTextView = true

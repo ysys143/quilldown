@@ -87,6 +87,7 @@ final class MarkdownHighlighter: NSObject, NSTextStorageDelegate {
     func highlight(textStorage: NSTextStorage) {
         let ns = textStorage.string as NSString
         let full = NSRange(location: 0, length: ns.length)
+        Self.debugLog("highlight called len=\(full.length)")
         guard full.length > 0 else { return }
 
         // 1) Reset base attributes across the whole document
@@ -95,6 +96,11 @@ final class MarkdownHighlighter: NSObject, NSTextStorageDelegate {
         textStorage.removeAttribute(.underlineStyle, range: full)
         textStorage.addAttribute(.font, value: baseFont, range: full)
         textStorage.addAttribute(.foregroundColor, value: Palette.base, range: full)
+
+        // DIAG: make first 10 chars bright red to prove attributes work
+        let diag = NSRange(location: 0, length: min(10, full.length))
+        textStorage.addAttribute(.foregroundColor, value: NSColor.red, range: diag)
+        Self.debugLog("DIAG: set red on range \(diag)")
 
         // 2) Compute codeblock regions so inline patterns don't apply inside them
         let codeblocks = computeCodeblockRanges(text: ns)
@@ -178,6 +184,20 @@ final class MarkdownHighlighter: NSObject, NSTextStorageDelegate {
             ranges.append(NSRange(location: start, length: text.length - start))
         }
         return ranges
+    }
+
+    static func debugLog(_ message: String) {
+        let line = "[\(Date())] \(message)\n"
+        let url = URL(fileURLWithPath: "/tmp/quilldown-debug.log")
+        if let data = line.data(using: .utf8) {
+            if let handle = try? FileHandle(forWritingTo: url) {
+                defer { try? handle.close() }
+                try? handle.seekToEnd()
+                try? handle.write(contentsOf: data)
+            } else {
+                try? data.write(to: url)
+            }
+        }
     }
 
     private func apply(
