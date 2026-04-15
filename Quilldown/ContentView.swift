@@ -12,6 +12,8 @@ struct ContentView: View {
     @State private var viewMode: ViewMode = .preview
     @State private var singleViewWidth: CGFloat = 0
     @State private var tocUpdateWorkItem: DispatchWorkItem?
+    @State private var isSearchVisible = false
+    @State private var searchQuery = ""
 
     var body: some View {
         HStack(spacing: 0) {
@@ -145,14 +147,43 @@ struct ContentView: View {
                     withAnimation(.easeInOut(duration: 0.2)) { showSidebar.toggle() }
                 }
                 .keyboardShortcut("b", modifiers: .command)
+
+                // Cmd+F is only handled at the view level when the preview is
+                // visible. In editor-only mode it falls through to NSTextView's
+                // built-in Find bar via the responder chain.
+                if viewMode != .editor {
+                    Button("") { isSearchVisible = true }
+                        .keyboardShortcut("f", modifiers: .command)
+                }
             }
             .frame(width: 0, height: 0)
             .opacity(0)
+        }
+        .onChange(of: viewMode) { _, newMode in
+            if newMode == .editor && isSearchVisible {
+                isSearchVisible = false
+                searchQuery = ""
+                WebViewStore.shared.clearPreviewFind()
+            }
         }
     }
 
     @ViewBuilder
     private var detailContent: some View {
+        ZStack(alignment: .topTrailing) {
+            contentForMode
+            if isSearchVisible && viewMode != .editor {
+                PreviewSearchBar(query: $searchQuery, isVisible: $isSearchVisible)
+                    .padding(.top, 12)
+                    .padding(.trailing, 16)
+                    .transition(.move(edge: .top).combined(with: .opacity))
+            }
+        }
+        .animation(.easeInOut(duration: 0.15), value: isSearchVisible)
+    }
+
+    @ViewBuilder
+    private var contentForMode: some View {
         switch viewMode {
         case .editor:
             MarkdownEditorView(text: $document.text)

@@ -10,6 +10,7 @@ struct MarkdownEditorView: NSViewRepresentable {
         var isUpdating = false
         var isSyncScrolling = false
         weak var scrollView: NSScrollView?
+        let highlighter = MarkdownHighlighter()
 
         init(parent: MarkdownEditorView) {
             self.parent = parent
@@ -153,6 +154,13 @@ struct MarkdownEditorView: NSViewRepresentable {
         textView.textContainerInset = NSSize(width: 12, height: 12)
         textView.delegate = context.coordinator
         textView.string = text
+
+        // Syntax highlighting runs after every character edit via the
+        // textStorage delegate. Kick off an initial pass for the loaded text.
+        textView.textStorage?.delegate = context.coordinator.highlighter
+        if let storage = textView.textStorage {
+            context.coordinator.highlighter.highlight(textStorage: storage)
+        }
 
         textView.autoresizingMask = [.width]
         textView.textContainer?.widthTracksTextView = true
