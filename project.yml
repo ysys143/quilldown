@@ -41,6 +41,26 @@ targets:
         CODE_SIGN_STYLE: Automatic
         ENABLE_HARDENED_RUNTIME: true
         COMBINE_HIDPI_IMAGES: true
+    info:
+      path: Quilldown/Info.plist
+      properties:
+        CFBundleDocumentTypes:
+          - CFBundleTypeName: Markdown Document
+            CFBundleTypeRole: Editor
+            LSHandlerRank: Alternate
+            LSItemContentTypes:
+              - net.daringfireball.markdown
+        UTImportedTypeDeclarations:
+          - UTTypeIdentifier: net.daringfireball.markdown
+            UTTypeDescription: Markdown Document
+            UTTypeConformsTo:
+              - public.plain-text
+            UTTypeTagSpecification:
+              public.filename-extension:
+                - md
+                - markdown
+                - mdown
+                - mkd
 
   QuilldownQuickLook:
     type: app-extension
@@ -63,23 +83,3 @@ targets:
         CODE_SIGN_STYLE: Automatic
         ENABLE_HARDENED_RUNTIME: true
         SKIP_INSTALL: YES
-    info:
-      path: Quilldown/Info.plist
-      properties:
-        CFBundleDocumentTypes:
-          - CFBundleTypeName: Markdown Document
-            CFBundleTypeRole: Editor
-            LSHandlerRank: Alternate
-            LSItemContentTypes:
-              - net.daringfireball.markdown
-        UTImportedTypeDeclarations:
-          - UTTypeIdentifier: net.daringfireball.markdown
-            UTTypeDescription: Markdown Document
-            UTTypeConformsTo:
-              - public.plain-text
-            UTTypeTagSpecification:
-              public.filename-extension:
-                - md
-                - markdown
-                - mdown
-                - mkd
