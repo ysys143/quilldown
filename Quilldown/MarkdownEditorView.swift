@@ -163,7 +163,7 @@ struct MarkdownEditorView: NSViewRepresentable {
         textView.isAutomaticDataDetectionEnabled = false
         textView.usesFindBar = true
         textView.isIncrementalSearchingEnabled = true
-        textView.textContainerInset = NSSize(width: 12, height: 12)
+        textView.textContainerInset = NSSize(width: 32, height: 16)
         textView.delegate = context.coordinator
 
         textView.string = text
