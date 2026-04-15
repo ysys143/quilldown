@@ -134,6 +134,22 @@ struct ContentView: View {
                 .help("Zoom Out")
                 .keyboardShortcut("-", modifiers: .command)
             }
+
+            // Persistent find button. In editor mode it triggers NSTextView's
+            // native Find bar; in preview/split it expands into an inline
+            // search field (shown as a separate ToolbarItem below).
+            ToolbarItem(placement: .primaryAction) {
+                Button(action: invokeFind) {
+                    Image(systemName: "magnifyingglass")
+                }
+                .help("Find (Cmd+F)")
+            }
+
+            if isSearchVisible && viewMode != .editor {
+                ToolbarItem(placement: .primaryAction) {
+                    PreviewSearchBar(query: $searchQuery, isVisible: $isSearchVisible)
+                }
+            }
         }
         // Hidden buttons for keyboard shortcuts
         .background {
@@ -177,19 +193,25 @@ struct ContentView: View {
             let cmdF = event.modifierFlags.contains(.command)
                 && event.keyCode == 3
             guard cmdF else { return event }
-
-            if viewMode == .editor {
-                let item = NSMenuItem()
-                item.tag = 1 // NSTextFinder.Action.showFindInterface
-                NSApp.sendAction(
-                    #selector(NSResponder.performTextFinderAction(_:)),
-                    to: nil,
-                    from: item
-                )
-                return nil
-            }
-            isSearchVisible = true
+            invokeFind()
             return nil
+        }
+    }
+
+    /// Routes a Find request to the appropriate handler for the current view
+    /// mode. In editor mode, forwards to NSTextView's native Find bar; in
+    /// preview/split, surfaces the inline search field in the toolbar.
+    private func invokeFind() {
+        if viewMode == .editor {
+            let item = NSMenuItem()
+            item.tag = 1 // NSTextFinder.Action.showFindInterface
+            NSApp.sendAction(
+                #selector(NSResponder.performTextFinderAction(_:)),
+                to: nil,
+                from: item
+            )
+        } else {
+            isSearchVisible = true
         }
     }
 
@@ -202,16 +224,7 @@ struct ContentView: View {
 
     @ViewBuilder
     private var detailContent: some View {
-        ZStack(alignment: .topTrailing) {
-            contentForMode
-            if isSearchVisible && viewMode != .editor {
-                PreviewSearchBar(query: $searchQuery, isVisible: $isSearchVisible)
-                    .padding(.top, 12)
-                    .padding(.trailing, 16)
-                    .transition(.move(edge: .top).combined(with: .opacity))
-            }
-        }
-        .animation(.easeInOut(duration: 0.15), value: isSearchVisible)
+        contentForMode
     }
 
     @ViewBuilder
