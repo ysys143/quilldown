@@ -256,6 +256,11 @@ xcrun stapler staple Quilldown.dmg
 
 ## Changelog
 
+### v1.1.2 — 2026-04-16
+
+- Android viewer app (Kotlin + WebView) that reuses the same `render.html` + markdown-it / KaTeX / Prism bundle. File picker via Storage Access Framework, recent files list with preview snippet, `ACTION_VIEW` intent handler. Signed release APK attached to the release page.
+- Fix: macOS app icon no longer shows a thin white halo in the Dock — the source PNG had a ~7px light frame that leaked through macOS's squircle mask. Re-masked with proper transparent corners (radius ~180) and regenerated every asset size.
+
 ### v1.1.1 — 2026-04-15 (performance)
 
 **Dramatic first-open and typing improvements.** Measured against a 87.5KB document:

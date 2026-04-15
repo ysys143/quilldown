@@ -22,8 +22,8 @@ android {
         applicationId = "com.quilldown.viewer"
         minSdk = 26 // Android 8.0+ so adaptive icons work without PNG fallbacks
         targetSdk = 34
-        versionCode = 1
-        versionName = "1.1.1"
+        versionCode = 2
+        versionName = "1.1.2"
     }
 
     signingConfigs {
