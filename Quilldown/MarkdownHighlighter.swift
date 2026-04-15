@@ -53,10 +53,7 @@ final class MarkdownHighlighter: NSObject, NSTextStorageDelegate {
         let desc = baseFont.fontDescriptor.withSymbolicTraits(.italic)
         return NSFont(descriptor: desc, size: baseSize) ?? baseFont
     }()
-    private lazy var headingFonts: [NSFont] = (1...6).map { level in
-        let bump = CGFloat(max(0, 6 - level))
-        return NSFont.monospacedSystemFont(ofSize: baseSize + bump, weight: .bold)
-    }
+    private lazy var headingFont = NSFont.monospacedSystemFont(ofSize: baseSize, weight: .bold)
 
     private let reHeading     = try! NSRegularExpression(pattern: #"^(#{1,6})(\s+).*$"#, options: .anchorsMatchLines)
     private let reBold        = try! NSRegularExpression(pattern: #"\*\*([^*\n]+)\*\*"#)
@@ -82,12 +79,10 @@ final class MarkdownHighlighter: NSObject, NSTextStorageDelegate {
         highlight(textStorage: textStorage)
     }
 
-    /// Re-highlights the entire document. Triggered automatically on character
-    /// edits and also called once on initial attach.
+    /// Re-highlights the entire document. Triggered on every text change.
     func highlight(textStorage: NSTextStorage) {
         let ns = textStorage.string as NSString
         let full = NSRange(location: 0, length: ns.length)
-        Self.debugLog("highlight called len=\(full.length)")
         guard full.length > 0 else { return }
 
         // 1) Reset base attributes across the whole document
@@ -97,18 +92,12 @@ final class MarkdownHighlighter: NSObject, NSTextStorageDelegate {
         textStorage.addAttribute(.font, value: baseFont, range: full)
         textStorage.addAttribute(.foregroundColor, value: Palette.base, range: full)
 
-        // DIAG: make first 10 chars bright red to prove attributes work
-        let diag = NSRange(location: 0, length: min(10, full.length))
-        textStorage.addAttribute(.foregroundColor, value: NSColor.red, range: diag)
-        Self.debugLog("DIAG: set red on range \(diag)")
-
         // 2) Compute codeblock regions so inline patterns don't apply inside them
         let codeblocks = computeCodeblockRanges(text: ns)
 
         // 3) Inline / line-level patterns (outside codeblocks)
         apply(reHeading, in: ns, excluding: codeblocks) { m in
-            let level = m.range(at: 1).length
-            textStorage.addAttribute(.font, value: headingFont(level), range: m.range)
+            textStorage.addAttribute(.font, value: headingFont, range: m.range)
             textStorage.addAttribute(.foregroundColor, value: Palette.heading, range: m.range)
         }
         apply(reHorizontal, in: ns, excluding: codeblocks) { m in
@@ -161,11 +150,6 @@ final class MarkdownHighlighter: NSObject, NSTextStorageDelegate {
         }
     }
 
-    private func headingFont(_ level: Int) -> NSFont {
-        let idx = max(0, min(level - 1, headingFonts.count - 1))
-        return headingFonts[idx]
-    }
-
     /// Pairs up ``` fences into closed ranges; an unclosed trailing fence spans
     /// to end of document so typing the opening fence immediately styles below.
     private func computeCodeblockRanges(text: NSString) -> [NSRange] {
@@ -184,20 +168,6 @@ final class MarkdownHighlighter: NSObject, NSTextStorageDelegate {
             ranges.append(NSRange(location: start, length: text.length - start))
         }
         return ranges
-    }
-
-    static func debugLog(_ message: String) {
-        let line = "[\(Date())] \(message)\n"
-        let url = URL(fileURLWithPath: "/tmp/quilldown-debug.log")
-        if let data = line.data(using: .utf8) {
-            if let handle = try? FileHandle(forWritingTo: url) {
-                defer { try? handle.close() }
-                try? handle.seekToEnd()
-                try? handle.write(contentsOf: data)
-            } else {
-                try? data.write(to: url)
-            }
-        }
     }
 
     private func apply(

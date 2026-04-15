@@ -17,7 +17,6 @@ struct MarkdownEditorView: NSViewRepresentable {
         }
 
         func textDidChange(_ notification: Notification) {
-            MarkdownHighlighter.debugLog("textDidChange fired, isUpdating=\(isUpdating)")
             guard !isUpdating, let textView = notification.object as? NSTextView else { return }
             parent.text = textView.string
             if let storage = textView.textStorage {
@@ -170,8 +169,8 @@ struct MarkdownEditorView: NSViewRepresentable {
         textView.string = text
 
         // Apply syntax highlighting to the initial content. Subsequent edits
-        // flow through `textDidChange` which re-highlights the document.
-        MarkdownHighlighter.debugLog("makeNSView: setting string len=\(text.count), storage=\(textView.textStorage != nil)")
+        // flow through `textDidChange` which re-highlights the document, and
+        // external reloads are covered by `updateNSView`.
         if let storage = textView.textStorage {
             context.coordinator.highlighter.highlight(textStorage: storage)
         }
@@ -213,6 +212,9 @@ struct MarkdownEditorView: NSViewRepresentable {
             let selectedRanges = textView.selectedRanges
             textView.string = text
             textView.selectedRanges = selectedRanges
+            if let storage = textView.textStorage {
+                context.coordinator.highlighter.highlight(textStorage: storage)
+            }
             context.coordinator.isUpdating = false
         }
     }
