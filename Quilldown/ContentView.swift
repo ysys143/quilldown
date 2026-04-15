@@ -14,6 +14,7 @@ struct ContentView: View {
     @State private var tocUpdateWorkItem: DispatchWorkItem?
     @State private var isSearchVisible = false
     @State private var searchQuery = ""
+    @State private var keyMonitor: Any?
 
     var body: some View {
         HStack(spacing: 0) {
@@ -147,24 +148,52 @@ struct ContentView: View {
                     withAnimation(.easeInOut(duration: 0.2)) { showSidebar.toggle() }
                 }
                 .keyboardShortcut("b", modifiers: .command)
-
-                // Cmd+F is only handled at the view level when the preview is
-                // visible. In editor-only mode it falls through to NSTextView's
-                // built-in Find bar via the responder chain.
-                if viewMode != .editor {
-                    Button("") { isSearchVisible = true }
-                        .keyboardShortcut("f", modifiers: .command)
-                }
             }
             .frame(width: 0, height: 0)
             .opacity(0)
         }
+        .onAppear { installKeyMonitor() }
+        .onDisappear { removeKeyMonitor() }
         .onChange(of: viewMode) { _, newMode in
             if newMode == .editor && isSearchVisible {
                 isSearchVisible = false
                 searchQuery = ""
                 WebViewStore.shared.clearPreviewFind()
             }
+        }
+    }
+
+    // Intercepts Cmd+F at the window level. SwiftUI apps don't install the
+    // default Edit ▸ Find menu, so NSTextView's `usesFindBar = true` has no
+    // way to receive `performFindPanelAction:` unless we dispatch it manually.
+    // In editor mode we send the show-find-panel action to the first responder
+    // (NSTextView picks it up). In preview/split we show our floating bar.
+    private func installKeyMonitor() {
+        guard keyMonitor == nil else { return }
+        keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
+            let cmdF = event.modifierFlags.contains(.command)
+                && event.charactersIgnoringModifiers == "f"
+            guard cmdF else { return event }
+
+            if viewMode == .editor {
+                let item = NSMenuItem()
+                item.tag = 1 // NSTextFinder.Action.showFindInterface
+                NSApp.sendAction(
+                    #selector(NSResponder.performTextFinderAction(_:)),
+                    to: nil,
+                    from: item
+                )
+                return nil
+            }
+            isSearchVisible = true
+            return nil
+        }
+    }
+
+    private func removeKeyMonitor() {
+        if let monitor = keyMonitor {
+            NSEvent.removeMonitor(monitor)
+            keyMonitor = nil
         }
     }
 
