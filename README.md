@@ -7,9 +7,12 @@ A lightweight, native macOS markdown viewer and editor built with SwiftUI and We
 ## Features
 
 - **Multiple View Modes**: Editor-only, preview-only, or split view with synchronized scrolling
+- **Editor Syntax Highlighting**: Live Sublime-style coloring for headings, bold, italic, inline code, fenced code blocks, links, blockquotes, list markers, and math
+- **QuickLook Preview**: Press Space on any `.md` file in Finder for an instant, fully rendered preview (no need to launch the app)
+- **Find in Document**: Cmd+F in the toolbar — native `NSSearchField` in preview/split, NSTextView Find bar in editor; works with Korean/CJK input methods
 - **Math Equations**: Full support for LaTeX via KaTeX with both inline (`$...$`) and display (`$$...$$`, `\(...\)`, `\[...\]`) syntax
 - **Diagrams**: Create flowcharts, sequence diagrams, class diagrams, and more with Mermaid
-- **Syntax Highlighting**: Code blocks with 18+ language support via Prism.js
+- **Code Syntax Highlighting**: Code blocks with 18+ language support via Prism.js in the preview
 - **Table of Contents**: Auto-generated sidebar with clickable navigation to headings
 - **PDF Export**: Export rendered markdown as PDF with Cmd+Shift+E
 - **Live File Watching**: External file edits automatically refresh in the app (compatible with vim, emacs, and other editors)
@@ -94,6 +97,7 @@ Switch between three view modes using the toolbar buttons or keyboard shortcuts:
 | Split view | Cmd+2 |
 | Preview mode | Cmd+3 |
 | Toggle sidebar | Cmd+B |
+| Find | Cmd+F |
 | Zoom in | Cmd++ |
 | Zoom out | Cmd+- |
 | Actual size | Cmd+0 |
@@ -249,6 +253,18 @@ codesign --sign 'Developer ID Application: Your Name' Quilldown.dmg
 xcrun notarytool submit Quilldown.dmg --keychain-profile 'profile' --wait
 xcrun stapler staple Quilldown.dmg
 ```
+
+## Changelog
+
+### 2026-04-15
+
+- **QuickLook extension**: Finder Space preview for `.md` files with full rendering (markdown-it + KaTeX + Prism + Mermaid). Implemented via the data-based `QLPreviewProvider` / `QLPreviewReply` API so the extension generates a self-contained HTML string and QuickLook renders it — no WKWebView inside the sandboxed extension.
+- **Editor syntax highlighting**: Live Sublime-style coloring powered by `NSTextStorageDelegate` + `NSRegularExpression`. Covers headings, bold/italic/strike, inline code, fenced code blocks, links, blockquotes, list markers, and inline/display math. Palette adapts to light/dark mode.
+- **Find in document (Cmd+F)**:
+  - Preview/split: native `NSSearchField` in the toolbar (same visual style as Notes.app), driving `WKWebView.find(_:configuration:)`.
+  - Editor: dispatches `performTextFinderAction:` to surface NSTextView's built-in Find bar.
+  - Intercepts via `NSEvent.addLocalMonitorForEvents` keyed on hardware `keyCode` (3 = F), so the shortcut fires even with Korean/CJK input methods active.
+- **Editor layout polish**: text container inset tuned to match the preview body padding (32pt sides, 16pt top/bottom) with `lineFragmentPadding = 0` for exact alignment between editor and preview.
 
 ## License
 
