@@ -1,6 +1,17 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
+}
+
+// Load release signing config from ~/.quilldown/keystore.properties if present.
+// The file and keystore live outside the repo so secrets never enter git.
+// Other machines fall through to an unsigned release build.
+val keystorePropsFile = file("${System.getProperty("user.home")}/.quilldown/keystore.properties")
+val keystoreProps = Properties()
+if (keystorePropsFile.exists()) {
+    keystorePropsFile.inputStream().use { keystoreProps.load(it) }
 }
 
 android {
@@ -15,9 +26,23 @@ android {
         versionName = "1.1.1"
     }
 
+    signingConfigs {
+        create("release") {
+            if (keystoreProps.isNotEmpty()) {
+                storeFile = file(keystoreProps.getProperty("storeFile"))
+                storePassword = keystoreProps.getProperty("storePassword")
+                keyAlias = keystoreProps.getProperty("keyAlias")
+                keyPassword = keystoreProps.getProperty("keyPassword")
+            }
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = false
+            if (keystoreProps.isNotEmpty()) {
+                signingConfig = signingConfigs.getByName("release")
+            }
         }
         debug {
             isDebuggable = true
@@ -49,5 +74,7 @@ android {
 }
 
 dependencies {
-    // No external deps — WebView, Activity, and JSONObject are all platform APIs.
+    // ComponentActivity gives us `registerForActivityResult(...)` for the
+    // system file picker (Storage Access Framework).
+    implementation("androidx.activity:activity-ktx:1.9.3")
 }

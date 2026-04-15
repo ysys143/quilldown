@@ -6,6 +6,12 @@ Lightweight Markdown viewer. Reuses the exact `render.html` + markdown-it / KaTe
 - Viewer only — no editor. Tap a `.md` file from any file manager and it renders here.
 - Single source of truth for rendering: Gradle merges `../Quilldown/Resources/` into the APK's assets so the Android build is always in lock-step with the desktop build.
 
+## Download
+
+Grab the signed release APK from [GitHub Releases](https://github.com/ysys143/quilldown/releases/latest) (`Quilldown-android-v*.apk`).
+
+On first install you'll see a one-time "install unknown apps" prompt — enable it for whichever app handed you the APK (My Files, Chrome, KakaoTalk, etc.). Subsequent updates install silently because the APK is signed with a stable keystore.
+
 ## Requirements
 
 - Android Studio Hedgehog (2023.1.1) or newer, OR `sdkmanager` + JDK 17 on the command line

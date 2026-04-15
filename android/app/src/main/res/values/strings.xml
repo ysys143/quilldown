@@ -1,5 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Quilldown</string>
-    <string name="empty_state">Open a Markdown file from your file manager to view it here.</string>
+    <string name="empty_state">Open a Markdown file to view it here. No network access, no ads, no tracking.</string>
+    <string name="open_file">Open File</string>
+    <string name="recent_files">Recent</string>
 </resources>
