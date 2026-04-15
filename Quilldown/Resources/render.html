@@ -61,9 +61,9 @@
 
     <script src="markdown-it.min.js"></script>
     <script src="markdown-it-task-lists.min.js"></script>
-    <script src="katex.min.js"></script>
-    <script src="katex-auto-render.min.js"></script>
     <script src="prism.min.js"></script>
+    <!-- katex + katex-auto-render are lazy-loaded by loadKatex() below,
+         saving ~272KB of parse time on documents without math. -->
     <!-- Prism language components are lazy-loaded on demand to keep the
          initial WKWebView cold start fast. See loadPrismLang() below. -->
 
@@ -126,12 +126,18 @@
                 return `<div class="mermaid-container"${lineAttr}><pre class="mermaid">${code}</pre></div>`;
             }
             if (token.info.trim() === 'math') {
-                try {
-                    const lineAttr = token.map ? ` data-line="${token.map[0]}" data-line-end="${token.map[1]}"` : '';
-                    return `<div class="math-block"${lineAttr}>${katex.renderToString(token.content.trim(), { displayMode: true, throwOnError: false })}</div>`;
-                } catch(e) {
-                    return `<div class="mermaid-error">${e.message}</div>`;
+                const lineAttr = token.map ? ` data-line="${token.map[0]}" data-line-end="${token.map[1]}"` : '';
+                if (typeof katex !== 'undefined') {
+                    try {
+                        return `<div class="math-block"${lineAttr}>${katex.renderToString(token.content.trim(), { displayMode: true, throwOnError: false })}</div>`;
+                    } catch(e) {
+                        return `<div class="mermaid-error">${e.message}</div>`;
+                    }
                 }
+                // KaTeX not yet loaded: emit placeholder; a second pass after
+                // loadKatex() resolves will render it.
+                const encoded = token.content.trim().replace(/&/g, '&amp;').replace(/</g, '&lt;');
+                return `<div class="math-block math-pending"${lineAttr} data-math-src="${encoded}">${encoded}</div>`;
             }
             return defaultFence(tokens, idx, options, env, self);
         };
@@ -146,8 +152,29 @@
             }
         });
 
-        // Store reference to katex auto-render BEFORE defining render()
-        const katexRenderMathInElement = (typeof renderMathInElement === 'function') ? renderMathInElement : null;
+        // KaTeX is lazy-loaded only when a document actually contains math.
+        // Documents without $...$ or $$...$$ skip the ~272KB JS parse entirely.
+        var _katexReady = null;
+        function loadKatex() {
+            if (_katexReady) return _katexReady;
+            _katexReady = new Promise((resolve) => {
+                var s1 = document.createElement('script');
+                s1.src = 'katex.min.js';
+                s1.onload = () => {
+                    var s2 = document.createElement('script');
+                    s2.src = 'katex-auto-render.min.js';
+                    s2.onload = () => resolve(true);
+                    s2.onerror = () => resolve(false);
+                    document.head.appendChild(s2);
+                };
+                s1.onerror = () => resolve(false);
+                document.head.appendChild(s1);
+            });
+            return _katexReady;
+        }
+        function hasMath(md) {
+            return /\$\$[\s\S]+?\$\$|(?<!\$)\$(?!\$)[^\n$]+\$(?!\$)|\\\(|\\\[|```math/.test(md);
+        }
 
         // Prism language lazy loader. Plugins are fetched on first use via
         // dynamic <script> injection so the initial WKWebView cold start
@@ -277,17 +304,35 @@
             // Apply Prism.js highlighting lazily (loads language plugins on demand)
             highlightCodeLazily(container);
 
-            // Apply KaTeX auto-render
-            if (katexRenderMathInElement) {
-                katexRenderMathInElement(container, {
-                    delimiters: [
-                        {left: '$$', right: '$$', display: true},
-                        {left: '$', right: '$', display: false},
-                        {left: '\\(', right: '\\)', display: false},
-                        {left: '\\[', right: '\\]', display: true}
-                    ],
-                    throwOnError: false,
-                    strict: false
+            // Apply KaTeX only if the document actually contains math markers.
+            // Docs with no math skip the 272KB KaTeX parse completely.
+            if (hasMath(markdownText)) {
+                loadKatex().then((ok) => {
+                    if (!ok) return;
+                    var pending = container.querySelectorAll('.math-pending');
+                    for (var el of pending) {
+                        var src = el.getAttribute('data-math-src') || el.textContent;
+                        try {
+                            var rendered = katex.renderToString(src, { displayMode: true, throwOnError: false });
+                            var frag = document.createRange().createContextualFragment(rendered);
+                            el.replaceChildren(frag);
+                            el.classList.remove('math-pending');
+                        } catch (e) {
+                            el.textContent = src;
+                        }
+                    }
+                    if (typeof renderMathInElement === 'function') {
+                        renderMathInElement(container, {
+                            delimiters: [
+                                {left: '$$', right: '$$', display: true},
+                                {left: '$', right: '$', display: false},
+                                {left: '\\(', right: '\\)', display: false},
+                                {left: '\\[', right: '\\]', display: true}
+                            ],
+                            throwOnError: false,
+                            strict: false
+                        });
+                    }
                 });
             }
 

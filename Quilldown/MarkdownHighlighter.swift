@@ -81,38 +81,68 @@ final class MarkdownHighlighter: NSObject, NSTextStorageDelegate {
         }
     }
 
-    /// Applies syntax highlighting. When `editedRange` is non-nil the scan
-    /// is limited to the surrounding paragraphs (extended across fenced code
-    /// blocks), so typing in a 100KB document stays O(paragraph) instead of
-    /// O(full-document).
+    /// Threshold above which a range is considered "bulk" (initial load or
+    /// large paste). Bulk changes get a viewport-first + deferred tail pass
+    /// so the visible area paints immediately without freezing the main thread
+    /// on the rest of a 100KB document.
+    private let bulkThreshold = 10_000
+    private var pendingTailGeneration: Int = 0
+
+    /// Applies syntax highlighting. Small edits re-process the surrounding
+    /// paragraphs only. Bulk changes (initial load / large paste) paint the
+    /// first ~10KB synchronously and defer the rest to the next runloop tick.
     func highlight(textStorage: NSTextStorage, editedRange: NSRange? = nil) {
         let ns = textStorage.string as NSString
         let fullLen = ns.length
         guard fullLen > 0 else { return }
 
-        // Compute fences once — needed both to decide which inline patterns
-        // apply and to widen the target range if the edit touches a fence.
         let codeblocks = computeCodeblockRanges(text: ns)
 
-        let target: NSRange
-        if let edited = editedRange {
-            target = expandRange(edited, in: ns, codeblocks: codeblocks)
-        } else {
-            target = NSRange(location: 0, length: fullLen)
+        // Incremental path: small edit, scan surrounding paragraphs only.
+        if let edited = editedRange, edited.length <= bulkThreshold {
+            let target = expandRange(edited, in: ns, codeblocks: codeblocks)
+            applyPatterns(textStorage: textStorage, ns: ns, target: target, codeblocks: codeblocks)
+            return
         }
-        guard target.length > 0 else { return }
 
+        // Bulk path: paint visible-first chunk, defer the tail.
+        let head = NSRange(location: 0, length: min(bulkThreshold, fullLen))
+        applyPatterns(textStorage: textStorage, ns: ns, target: head, codeblocks: codeblocks)
+
+        guard fullLen > bulkThreshold else { return }
+        pendingTailGeneration += 1
+        let generation = pendingTailGeneration
+        DispatchQueue.main.async { [weak self, weak textStorage] in
+            guard let self, let textStorage else { return }
+            // Skip if a newer bulk pass superseded this one (e.g. user
+            // already started typing or reloaded the document).
+            guard generation == self.pendingTailGeneration else { return }
+            let nsNow = textStorage.string as NSString
+            guard nsNow.length > self.bulkThreshold else { return }
+            let tail = NSRange(location: self.bulkThreshold, length: nsNow.length - self.bulkThreshold)
+            let cbNow = self.computeCodeblockRanges(text: nsNow)
+            PerfLog.measure(.editor, "highlight.tail", note: "range=\(tail.length)") {
+                self.applyPatterns(textStorage: textStorage, ns: nsNow, target: tail, codeblocks: cbNow)
+            }
+        }
+    }
+
+    private func applyPatterns(
+        textStorage: NSTextStorage,
+        ns: NSString,
+        target: NSRange,
+        codeblocks: [NSRange]
+    ) {
+        guard target.length > 0 else { return }
         textStorage.beginEditing()
         defer { textStorage.endEditing() }
 
-        // 1) Reset base attributes within target only
         textStorage.removeAttribute(.backgroundColor, range: target)
         textStorage.removeAttribute(.strikethroughStyle, range: target)
         textStorage.removeAttribute(.underlineStyle, range: target)
         textStorage.addAttribute(.font, value: baseFont, range: target)
         textStorage.addAttribute(.foregroundColor, value: Palette.base, range: target)
 
-        // 2) Inline / line-level patterns (outside codeblocks)
         apply(reHeading, in: ns, range: target, excluding: codeblocks) { m in
             textStorage.addAttribute(.font, value: headingFont, range: m.range)
             textStorage.addAttribute(.foregroundColor, value: Palette.heading, range: m.range)
@@ -159,7 +189,6 @@ final class MarkdownHighlighter: NSObject, NSTextStorageDelegate {
             textStorage.addAttribute(.backgroundColor, value: Palette.codeBg, range: m.range)
         }
 
-        // 3) Codeblock regions — only those intersecting our target
         for cb in codeblocks where NSIntersectionRange(cb, target).length > 0 {
             textStorage.addAttribute(.font, value: baseFont, range: cb)
             textStorage.addAttribute(.foregroundColor, value: Palette.codeFg, range: cb)
