@@ -171,8 +171,11 @@ struct ContentView: View {
     private func installKeyMonitor() {
         guard keyMonitor == nil else { return }
         keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
+            // Compare by hardware keyCode so Hangul/CJK input methods still
+            // trigger the shortcut (characters would be "ㄹ" instead of "f").
+            // kVK_ANSI_F == 3.
             let cmdF = event.modifierFlags.contains(.command)
-                && event.charactersIgnoringModifiers == "f"
+                && event.keyCode == 3
             guard cmdF else { return event }
 
             if viewMode == .editor {
