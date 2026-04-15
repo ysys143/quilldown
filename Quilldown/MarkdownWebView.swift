@@ -82,8 +82,21 @@ struct MarkdownWebView: NSViewRepresentable {
 
             let js = "render(\(markdownJSON), \(baseDirJSON)); \(scrollRestore)"
             let tRender = PerfLog.begin(.preview, "render.initial")
-            webView.evaluateJavaScript(js) { _, error in
-                PerfLog.end(tRender, "chars=\(self.currentMarkdown.count)\(error.map { " err=\($0.localizedDescription)" } ?? "")")
+            webView.evaluateJavaScript(js) { [weak self, weak webView] _, error in
+                PerfLog.end(tRender, "chars=\(self?.currentMarkdown.count ?? 0)\(error.map { " err=\($0.localizedDescription)" } ?? "")")
+                // Warm WKWebView's find engine with a nonsense query so the
+                // user's first real Cmd+F doesn't pay the internal indexing
+                // cost (~300ms on a 100KB doc). Fires after first render so
+                // the DOM is populated.
+                guard let webView else { return }
+                Task { @MainActor in
+                    try? await Task.sleep(nanoseconds: 300_000_000)
+                    let cfg = WKFindConfiguration()
+                    cfg.caseSensitive = false
+                    let t = PerfLog.begin(.search, "find.warmup")
+                    _ = try? await webView.find("__quilldown_prewarm_sentinel__", configuration: cfg)
+                    PerfLog.end(t)
+                }
             }
 
             if let anchor = pendingAnchor {
