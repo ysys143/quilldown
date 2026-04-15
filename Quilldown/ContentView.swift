@@ -135,19 +135,20 @@ struct ContentView: View {
                 .keyboardShortcut("-", modifiers: .command)
             }
 
-            // Persistent find button. In editor mode it triggers NSTextView's
-            // native Find bar; in preview/split it expands into an inline
-            // search field (shown as a separate ToolbarItem below).
-            ToolbarItem(placement: .primaryAction) {
-                Button(action: invokeFind) {
-                    Image(systemName: "magnifyingglass")
-                }
-                .help("Find (Cmd+F)")
-            }
-
+            // Toolbar find affordance. When inactive, shows a single
+            // magnifying-glass button. When Cmd+F (or the button) activates
+            // search in preview/split, the button is replaced by a native
+            // NSSearchField (same look as Notes.app) in the same slot.
             if isSearchVisible && viewMode != .editor {
                 ToolbarItem(placement: .primaryAction) {
                     PreviewSearchBar(query: $searchQuery, isVisible: $isSearchVisible)
+                }
+            } else {
+                ToolbarItem(placement: .primaryAction) {
+                    Button(action: invokeFind) {
+                        Image(systemName: "magnifyingglass")
+                    }
+                    .help("Find (Cmd+F)")
                 }
             }
         }

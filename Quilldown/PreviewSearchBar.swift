@@ -1,86 +1,89 @@
 import SwiftUI
+import AppKit
 
-/// Floating find bar shown above the WKWebView preview. Behaves like Safari's
-/// Cmd+F bar: typing searches incrementally, Enter advances, Shift+Enter goes
-/// back, Esc closes. All navigation goes through `WebViewStore.findInPreview`.
+/// Toolbar search field with native macOS styling (same look as Notes.app).
+/// Wraps `NSSearchField` so we get the rounded bezel, built-in magnifying
+/// glass, clear-X button, and system focus ring for free.
+/// Enter -> next match, Shift+Enter -> previous, Esc -> close.
 struct PreviewSearchBar: View {
     @Binding var query: String
     @Binding var isVisible: Bool
 
-    @FocusState private var isFocused: Bool
-
     var body: some View {
-        HStack(spacing: 6) {
-            Image(systemName: "magnifyingglass")
-                .foregroundStyle(.secondary)
-
-            TextField("Search", text: $query)
-                .textFieldStyle(.plain)
-                .frame(width: 200)
-                .focused($isFocused)
-                .onSubmit {
-                    Task { await find(forward: true) }
-                }
-
-            Button {
-                Task { await find(forward: false) }
-            } label: {
-                Image(systemName: "chevron.up")
-            }
-            .buttonStyle(.plain)
-            .disabled(query.isEmpty)
-            .help("Previous match (Shift+Return)")
-
-            Button {
-                Task { await find(forward: true) }
-            } label: {
-                Image(systemName: "chevron.down")
-            }
-            .buttonStyle(.plain)
-            .disabled(query.isEmpty)
-            .help("Next match (Return)")
-
-            Divider().frame(height: 14)
-
-            Button {
-                close()
-            } label: {
-                Image(systemName: "xmark")
-                    .font(.system(size: 10, weight: .bold))
-            }
-            .buttonStyle(.plain)
-            .help("Close (Esc)")
-            .keyboardShortcut(.cancelAction)
-        }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 6)
-        .background(
-            RoundedRectangle(cornerRadius: 8)
-                .fill(Color(nsColor: .controlBackgroundColor))
+        NativeSearchField(
+            text: $query,
+            onChange: { _ in
+                WebViewStore.shared.clearPreviewFind()
+                guard !query.isEmpty else { return }
+                Task { await WebViewStore.shared.findInPreview(query, forward: true) }
+            },
+            onSubmit: { shift in
+                Task { await WebViewStore.shared.findInPreview(query, forward: !shift) }
+            },
+            onCancel: close
         )
-        .overlay(
-            RoundedRectangle(cornerRadius: 8)
-                .strokeBorder(Color(nsColor: .separatorColor), lineWidth: 0.5)
-        )
-        .shadow(color: .black.opacity(0.15), radius: 6, x: 0, y: 2)
-        .onAppear { isFocused = true }
-        .onChange(of: query) {
-            WebViewStore.shared.clearPreviewFind()
-            guard !query.isEmpty else { return }
-            Task { await find(forward: true) }
-        }
-        .onChange(of: isVisible) {
-            if isVisible { isFocused = true }
-        }
-    }
-
-    private func find(forward: Bool) async {
-        await WebViewStore.shared.findInPreview(query, forward: forward)
+        .frame(minWidth: 220, idealWidth: 260, maxWidth: 320)
     }
 
     private func close() {
         WebViewStore.shared.clearPreviewFind()
         query = ""
         isVisible = false
+    }
+}
+
+struct NativeSearchField: NSViewRepresentable {
+    @Binding var text: String
+    var onChange: (String) -> Void = { _ in }
+    var onSubmit: (_ shiftHeld: Bool) -> Void = { _ in }
+    var onCancel: () -> Void = {}
+
+    func makeCoordinator() -> Coordinator { Coordinator(self) }
+
+    func makeNSView(context: Context) -> NSSearchField {
+        let field = NSSearchField()
+        field.placeholderString = "Search"
+        field.delegate = context.coordinator
+        field.sendsWholeSearchString = false
+        field.sendsSearchStringImmediately = true
+        field.bezelStyle = .roundedBezel
+        field.focusRingType = .default
+        field.target = context.coordinator
+        field.action = #selector(Coordinator.searchAction(_:))
+        DispatchQueue.main.async {
+            field.window?.makeFirstResponder(field)
+        }
+        return field
+    }
+
+    func updateNSView(_ field: NSSearchField, context: Context) {
+        context.coordinator.parent = self
+        if field.stringValue != text {
+            field.stringValue = text
+        }
+    }
+
+    final class Coordinator: NSObject, NSSearchFieldDelegate {
+        var parent: NativeSearchField
+        init(_ parent: NativeSearchField) { self.parent = parent }
+
+        func controlTextDidChange(_ notification: Notification) {
+            guard let field = notification.object as? NSSearchField else { return }
+            parent.text = field.stringValue
+            parent.onChange(field.stringValue)
+        }
+
+        @objc func searchAction(_ sender: NSSearchField) {
+            let shift = NSEvent.modifierFlags.contains(.shift)
+            parent.onSubmit(shift)
+        }
+
+        func control(_ control: NSControl, textView: NSTextView, doCommandBy commandSelector: Selector) -> Bool {
+            if commandSelector == #selector(NSResponder.cancelOperation(_:)) {
+                parent.onCancel()
+                return true
+            }
+            return false
+        }
     }
 }
