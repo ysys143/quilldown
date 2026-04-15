@@ -17,6 +17,7 @@ struct MarkdownWebView: NSViewRepresentable {
         var isSyncScrolling = false
         var baseDirectory: String = ""
         private var renderWorkItem: DispatchWorkItem?
+        var htmlLoadToken: PerfLog.Token?
 
         func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
             guard !isSyncScrolling,
@@ -41,6 +42,10 @@ struct MarkdownWebView: NSViewRepresentable {
         }
 
         func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+            if let t = htmlLoadToken {
+                PerfLog.end(t, "didFinish")
+                htmlLoadToken = nil
+            }
             self.webView = webView
             pageLoaded = true
             injectContent(into: webView)
@@ -76,10 +81,9 @@ struct MarkdownWebView: NSViewRepresentable {
                 : ""
 
             let js = "render(\(markdownJSON), \(baseDirJSON)); \(scrollRestore)"
+            let tRender = PerfLog.begin(.preview, "render.initial")
             webView.evaluateJavaScript(js) { _, error in
-                if let error = error {
-                    print("Render error: \(error.localizedDescription)")
-                }
+                PerfLog.end(tRender, "chars=\(self.currentMarkdown.count)\(error.map { " err=\($0.localizedDescription)" } ?? "")")
             }
 
             if let anchor = pendingAnchor {
@@ -105,10 +109,9 @@ struct MarkdownWebView: NSViewRepresentable {
                 guard let self,
                       let markdownJSON = self.encodeJSONString(markdown),
                       let baseDirJSON = self.encodeJSONString(self.baseDirectory) else { return }
+                let t = PerfLog.begin(.preview, "render.edit")
                 webView.evaluateJavaScript("render(\(markdownJSON), \(baseDirJSON))") { _, error in
-                    if let error = error {
-                        print("Render error: \(error.localizedDescription)")
-                    }
+                    PerfLog.end(t, "chars=\(markdown.count)\(error.map { " err=\($0.localizedDescription)" } ?? "")")
                 }
                 self.renderWorkItem = nil
             }
@@ -144,6 +147,8 @@ struct MarkdownWebView: NSViewRepresentable {
     }
 
     func makeNSView(context: Context) -> WKWebView {
+        let tMake = PerfLog.begin(.preview, "makeNSView")
+        defer { PerfLog.end(tMake) }
         let config = WKWebViewConfiguration()
         config.setURLSchemeHandler(LocalFileSchemeHandler(), forURLScheme: LocalFileSchemeHandler.scheme)
 
@@ -162,7 +167,7 @@ struct MarkdownWebView: NSViewRepresentable {
         context.coordinator.currentMarkdown = markdown
         context.coordinator.baseDirectory = fileURL?.deletingLastPathComponent().path ?? ""
         syncCoordinator?.previewCoordinator = context.coordinator
-        loadPage(in: webView)
+        loadPage(in: webView, coordinator: context.coordinator)
 
         return webView
     }
@@ -206,8 +211,9 @@ struct MarkdownWebView: NSViewRepresentable {
         }
     }
 
-    private func loadPage(in webView: WKWebView) {
+    private func loadPage(in webView: WKWebView, coordinator: Coordinator) {
         guard let htmlURL = Bundle.main.url(forResource: "render", withExtension: "html") else { return }
+        coordinator.htmlLoadToken = PerfLog.begin(.preview, "htmlLoad")
         // Allow read access to root so images from the markdown file's directory are accessible
         webView.loadFileURL(htmlURL, allowingReadAccessTo: htmlURL.deletingLastPathComponent())
     }

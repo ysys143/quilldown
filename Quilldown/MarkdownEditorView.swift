@@ -20,7 +20,9 @@ struct MarkdownEditorView: NSViewRepresentable {
             guard !isUpdating, let textView = notification.object as? NSTextView else { return }
             parent.text = textView.string
             if let storage = textView.textStorage {
-                highlighter.highlight(textStorage: storage)
+                PerfLog.measure(.editor, "highlight.edit", note: "chars=\(storage.length)") {
+                    highlighter.highlight(textStorage: storage)
+                }
             }
         }
 
@@ -142,6 +144,8 @@ struct MarkdownEditorView: NSViewRepresentable {
     }
 
     func makeNSView(context: Context) -> NSScrollView {
+        let tMake = PerfLog.begin(.editor, "makeNSView")
+        defer { PerfLog.end(tMake, "chars=\(text.count)") }
         let textView = NSTextView()
         textView.isEditable = true
         textView.isSelectable = true
@@ -175,7 +179,9 @@ struct MarkdownEditorView: NSViewRepresentable {
         // flow through `textDidChange` which re-highlights the document, and
         // external reloads are covered by `updateNSView`.
         if let storage = textView.textStorage {
-            context.coordinator.highlighter.highlight(textStorage: storage)
+            PerfLog.measure(.editor, "highlight.initial", note: "chars=\(text.count)") {
+                context.coordinator.highlighter.highlight(textStorage: storage)
+            }
         }
 
         textView.autoresizingMask = [.width]
@@ -216,7 +222,9 @@ struct MarkdownEditorView: NSViewRepresentable {
             textView.string = text
             textView.selectedRanges = selectedRanges
             if let storage = textView.textStorage {
-                context.coordinator.highlighter.highlight(textStorage: storage)
+                PerfLog.measure(.editor, "highlight.update", note: "chars=\(text.count)") {
+                    context.coordinator.highlighter.highlight(textStorage: storage)
+                }
             }
             context.coordinator.isUpdating = false
         }

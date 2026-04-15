@@ -14,6 +14,8 @@ class WebViewStore: ObservableObject {
         config.backwards = !forward
         config.wraps = wraps
         config.caseSensitive = false
+        let t = PerfLog.begin(.search, "webkit.find")
+        defer { PerfLog.end(t, "q=\"\(query.prefix(20))\" fwd=\(forward)") }
         do {
             let result = try await webView.find(query, configuration: config)
             return result.matchFound
