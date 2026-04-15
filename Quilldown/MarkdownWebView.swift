@@ -158,6 +158,9 @@ struct MarkdownWebView: NSViewRepresentable {
         let webView = WKWebView(frame: .zero, configuration: config)
         webView.setValue(false, forKey: "drawsBackground")
         webView.navigationDelegate = context.coordinator
+        // GPU-accelerated layer-backed compositing for smoother scrolling and
+        // reduced main-thread paint cost.
+        webView.wantsLayer = true
 
         WebViewStore.shared.activeWebView = webView
         #if DEBUG

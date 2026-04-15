@@ -64,25 +64,8 @@
     <script src="katex.min.js"></script>
     <script src="katex-auto-render.min.js"></script>
     <script src="prism.min.js"></script>
-    <!-- Prism language components -->
-    <script src="prism-markup.min.js"></script>
-    <script src="prism-css.min.js"></script>
-    <script src="prism-clike.min.js"></script>
-    <script src="prism-javascript.min.js"></script>
-    <script src="prism-bash.min.js"></script>
-    <script src="prism-c.min.js"></script>
-    <script src="prism-cpp.min.js"></script>
-    <script src="prism-go.min.js"></script>
-    <script src="prism-java.min.js"></script>
-    <script src="prism-json.min.js"></script>
-    <script src="prism-kotlin.min.js"></script>
-    <script src="prism-markdown.min.js"></script>
-    <script src="prism-python.min.js"></script>
-    <script src="prism-rust.min.js"></script>
-    <script src="prism-sql.min.js"></script>
-    <script src="prism-swift.min.js"></script>
-    <script src="prism-typescript.min.js"></script>
-    <script src="prism-yaml.min.js"></script>
+    <!-- Prism language components are lazy-loaded on demand to keep the
+         initial WKWebView cold start fast. See loadPrismLang() below. -->
 
     <script>
         // Initialize markdown-it
@@ -166,6 +149,55 @@
         // Store reference to katex auto-render BEFORE defining render()
         const katexRenderMathInElement = (typeof renderMathInElement === 'function') ? renderMathInElement : null;
 
+        // Prism language lazy loader. Plugins are fetched on first use via
+        // dynamic <script> injection so the initial WKWebView cold start
+        // doesn't parse ~40KB of unused grammar code.
+        var PRISM_DEPS = {
+            javascript: ['clike'],
+            typescript: ['clike', 'javascript'],
+            c: ['clike'],
+            cpp: ['clike', 'c'],
+            go: ['clike'],
+            java: ['clike'],
+            kotlin: ['clike'],
+            swift: ['clike']
+        };
+        var _prismLoaded = new Set();
+        var _prismInflight = new Map();
+        function loadPrismLang(lang) {
+            if (!lang || lang === 'none' || _prismLoaded.has(lang)) return Promise.resolve();
+            if (_prismInflight.has(lang)) return _prismInflight.get(lang);
+            var deps = PRISM_DEPS[lang] || [];
+            var p = (async () => {
+                for (var dep of deps) await loadPrismLang(dep);
+                await new Promise((resolve) => {
+                    if (_prismLoaded.has(lang)) return resolve();
+                    var s = document.createElement('script');
+                    s.src = 'prism-' + lang + '.min.js';
+                    s.onload = () => { _prismLoaded.add(lang); resolve(); };
+                    s.onerror = () => resolve();
+                    document.head.appendChild(s);
+                });
+            })();
+            _prismInflight.set(lang, p);
+            return p;
+        }
+
+        async function highlightCodeLazily(container) {
+            var nodes = container.querySelectorAll('code[class*="language-"]');
+            var langs = new Set();
+            for (var n of nodes) {
+                var m = /language-([\w-]+)/.exec(n.className);
+                if (m && m[1] !== 'none') langs.add(m[1]);
+            }
+            if (langs.size === 0) {
+                Prism.highlightAllUnder(container);
+                return;
+            }
+            await Promise.all(Array.from(langs).map(loadPrismLang));
+            Prism.highlightAllUnder(container);
+        }
+
         // Set initial Prism theme based on color scheme
         const isDarkMode = window.matchMedia('(prefers-color-scheme: dark)').matches;
         document.getElementById('prism-light').disabled = isDarkMode;
@@ -242,8 +274,8 @@
             container.innerHTML = html;
             resolveRelativePaths(container, _imageBaseDir);
 
-            // Apply Prism.js highlighting
-            Prism.highlightAllUnder(container);
+            // Apply Prism.js highlighting lazily (loads language plugins on demand)
+            highlightCodeLazily(container);
 
             // Apply KaTeX auto-render
             if (katexRenderMathInElement) {

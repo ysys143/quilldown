@@ -76,78 +76,110 @@ final class MarkdownHighlighter: NSObject, NSTextStorageDelegate {
         changeInLength delta: Int
     ) {
         guard editedMask.contains(.editedCharacters) else { return }
-        highlight(textStorage: textStorage)
+        PerfLog.measure(.editor, "highlight.delegate", note: "edited=\(editedRange.length) doc=\(textStorage.length)") {
+            highlight(textStorage: textStorage, editedRange: editedRange)
+        }
     }
 
-    /// Re-highlights the entire document. Triggered on every text change.
-    func highlight(textStorage: NSTextStorage) {
+    /// Applies syntax highlighting. When `editedRange` is non-nil the scan
+    /// is limited to the surrounding paragraphs (extended across fenced code
+    /// blocks), so typing in a 100KB document stays O(paragraph) instead of
+    /// O(full-document).
+    func highlight(textStorage: NSTextStorage, editedRange: NSRange? = nil) {
         let ns = textStorage.string as NSString
-        let full = NSRange(location: 0, length: ns.length)
-        guard full.length > 0 else { return }
+        let fullLen = ns.length
+        guard fullLen > 0 else { return }
 
-        // 1) Reset base attributes across the whole document
-        textStorage.removeAttribute(.backgroundColor, range: full)
-        textStorage.removeAttribute(.strikethroughStyle, range: full)
-        textStorage.removeAttribute(.underlineStyle, range: full)
-        textStorage.addAttribute(.font, value: baseFont, range: full)
-        textStorage.addAttribute(.foregroundColor, value: Palette.base, range: full)
-
-        // 2) Compute codeblock regions so inline patterns don't apply inside them
+        // Compute fences once — needed both to decide which inline patterns
+        // apply and to widen the target range if the edit touches a fence.
         let codeblocks = computeCodeblockRanges(text: ns)
 
-        // 3) Inline / line-level patterns (outside codeblocks)
-        apply(reHeading, in: ns, excluding: codeblocks) { m in
+        let target: NSRange
+        if let edited = editedRange {
+            target = expandRange(edited, in: ns, codeblocks: codeblocks)
+        } else {
+            target = NSRange(location: 0, length: fullLen)
+        }
+        guard target.length > 0 else { return }
+
+        textStorage.beginEditing()
+        defer { textStorage.endEditing() }
+
+        // 1) Reset base attributes within target only
+        textStorage.removeAttribute(.backgroundColor, range: target)
+        textStorage.removeAttribute(.strikethroughStyle, range: target)
+        textStorage.removeAttribute(.underlineStyle, range: target)
+        textStorage.addAttribute(.font, value: baseFont, range: target)
+        textStorage.addAttribute(.foregroundColor, value: Palette.base, range: target)
+
+        // 2) Inline / line-level patterns (outside codeblocks)
+        apply(reHeading, in: ns, range: target, excluding: codeblocks) { m in
             textStorage.addAttribute(.font, value: headingFont, range: m.range)
             textStorage.addAttribute(.foregroundColor, value: Palette.heading, range: m.range)
         }
-        apply(reHorizontal, in: ns, excluding: codeblocks) { m in
+        apply(reHorizontal, in: ns, range: target, excluding: codeblocks) { m in
             textStorage.addAttribute(.foregroundColor, value: Palette.muted, range: m.range)
         }
-        apply(reBold, in: ns, excluding: codeblocks) { m in
+        apply(reBold, in: ns, range: target, excluding: codeblocks) { m in
             textStorage.addAttribute(.font, value: boldFont, range: m.range)
             textStorage.addAttribute(.foregroundColor, value: Palette.bold, range: m.range)
         }
-        apply(reItalicStar, in: ns, excluding: codeblocks) { m in
+        apply(reItalicStar, in: ns, range: target, excluding: codeblocks) { m in
             textStorage.addAttribute(.font, value: italicFont, range: m.range)
             textStorage.addAttribute(.foregroundColor, value: Palette.italic, range: m.range)
         }
-        apply(reItalicUnder, in: ns, excluding: codeblocks) { m in
+        apply(reItalicUnder, in: ns, range: target, excluding: codeblocks) { m in
             textStorage.addAttribute(.font, value: italicFont, range: m.range)
             textStorage.addAttribute(.foregroundColor, value: Palette.italic, range: m.range)
         }
-        apply(reStrike, in: ns, excluding: codeblocks) { m in
+        apply(reStrike, in: ns, range: target, excluding: codeblocks) { m in
             textStorage.addAttribute(.foregroundColor, value: Palette.muted, range: m.range)
             textStorage.addAttribute(.strikethroughStyle, value: NSUnderlineStyle.single.rawValue, range: m.range)
         }
-        apply(reLink, in: ns, excluding: codeblocks) { m in
+        apply(reLink, in: ns, range: target, excluding: codeblocks) { m in
             textStorage.addAttribute(.foregroundColor, value: Palette.link, range: m.range)
             textStorage.addAttribute(.underlineStyle, value: NSUnderlineStyle.single.rawValue, range: m.range(at: 2))
         }
-        apply(reBlockquote, in: ns, excluding: codeblocks) { m in
+        apply(reBlockquote, in: ns, range: target, excluding: codeblocks) { m in
             textStorage.addAttribute(.foregroundColor, value: Palette.muted, range: m.range)
             textStorage.addAttribute(.font, value: italicFont, range: m.range)
         }
-        apply(reListMarker, in: ns, excluding: codeblocks) { m in
+        apply(reListMarker, in: ns, range: target, excluding: codeblocks) { m in
             textStorage.addAttribute(.foregroundColor, value: Palette.listMarker, range: m.range(at: 2))
             textStorage.addAttribute(.font, value: boldFont, range: m.range(at: 2))
         }
-        apply(reMathBlock, in: ns, excluding: codeblocks) { m in
+        apply(reMathBlock, in: ns, range: target, excluding: codeblocks) { m in
             textStorage.addAttribute(.foregroundColor, value: Palette.math, range: m.range)
         }
-        apply(reMathInline, in: ns, excluding: codeblocks) { m in
+        apply(reMathInline, in: ns, range: target, excluding: codeblocks) { m in
             textStorage.addAttribute(.foregroundColor, value: Palette.math, range: m.range)
         }
-        apply(reInlineCode, in: ns, excluding: codeblocks) { m in
+        apply(reInlineCode, in: ns, range: target, excluding: codeblocks) { m in
             textStorage.addAttribute(.foregroundColor, value: Palette.codeFg, range: m.range)
             textStorage.addAttribute(.backgroundColor, value: Palette.codeBg, range: m.range)
         }
 
-        // 4) Codeblock regions last — their styling wins over everything inside
-        for range in codeblocks {
-            textStorage.addAttribute(.font, value: baseFont, range: range)
-            textStorage.addAttribute(.foregroundColor, value: Palette.codeFg, range: range)
-            textStorage.addAttribute(.backgroundColor, value: Palette.codeBg, range: range)
+        // 3) Codeblock regions — only those intersecting our target
+        for cb in codeblocks where NSIntersectionRange(cb, target).length > 0 {
+            textStorage.addAttribute(.font, value: baseFont, range: cb)
+            textStorage.addAttribute(.foregroundColor, value: Palette.codeFg, range: cb)
+            textStorage.addAttribute(.backgroundColor, value: Palette.codeBg, range: cb)
         }
+    }
+
+    /// Widens `edited` to paragraph boundaries; if the widened range overlaps
+    /// a fenced code block, the whole block is included so fence styling stays
+    /// consistent even when only the opening/closing line was touched.
+    private func expandRange(_ edited: NSRange, in text: NSString, codeblocks: [NSRange]) -> NSRange {
+        let safeLoc = max(0, min(edited.location, text.length))
+        let safeLen = max(0, min(edited.length, text.length - safeLoc))
+        var expanded = text.paragraphRange(for: NSRange(location: safeLoc, length: safeLen))
+        for cb in codeblocks where NSIntersectionRange(cb, expanded).length > 0 || cb.contains(safeLoc) {
+            let start = min(expanded.location, cb.location)
+            let end = max(NSMaxRange(expanded), NSMaxRange(cb))
+            expanded = NSRange(location: start, length: end - start)
+        }
+        return expanded
     }
 
     /// Pairs up ``` fences into closed ranges; an unclosed trailing fence spans
@@ -173,10 +205,10 @@ final class MarkdownHighlighter: NSObject, NSTextStorageDelegate {
     private func apply(
         _ re: NSRegularExpression,
         in text: NSString,
+        range: NSRange,
         excluding: [NSRange],
         handler: (NSTextCheckingResult) -> Void
     ) {
-        let range = NSRange(location: 0, length: text.length)
         re.enumerateMatches(in: text as String, range: range) { match, _, _ in
             guard let match = match else { return }
             for ex in excluding where NSIntersectionRange(ex, match.range).length > 0 {

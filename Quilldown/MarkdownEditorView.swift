@@ -19,11 +19,8 @@ struct MarkdownEditorView: NSViewRepresentable {
         func textDidChange(_ notification: Notification) {
             guard !isUpdating, let textView = notification.object as? NSTextView else { return }
             parent.text = textView.string
-            if let storage = textView.textStorage {
-                PerfLog.measure(.editor, "highlight.edit", note: "chars=\(storage.length)") {
-                    highlighter.highlight(textStorage: storage)
-                }
-            }
+            // Highlighting is driven by the NSTextStorageDelegate (see
+            // highlighter) so it can run paragraph-scoped using editedRange.
         }
 
         func textViewDidChangeSelection(_ notification: Notification) {
@@ -173,16 +170,17 @@ struct MarkdownEditorView: NSViewRepresentable {
         textView.textContainer?.lineFragmentPadding = 0
         textView.delegate = context.coordinator
 
+        // Attach the highlighter as the storage delegate BEFORE assigning the
+        // initial text, so the first didProcessEditing fires on full range and
+        // styles the loaded document in one pass. All subsequent edits flow
+        // through the same delegate path with a paragraph-scoped editedRange.
+        textView.textStorage?.delegate = context.coordinator.highlighter
         textView.string = text
 
-        // Apply syntax highlighting to the initial content. Subsequent edits
-        // flow through `textDidChange` which re-highlights the document, and
-        // external reloads are covered by `updateNSView`.
-        if let storage = textView.textStorage {
-            PerfLog.measure(.editor, "highlight.initial", note: "chars=\(text.count)") {
-                context.coordinator.highlighter.highlight(textStorage: storage)
-            }
-        }
+        // Layout performance: allow idle-time layout and non-contiguous
+        // viewport-only layout so large documents don't stall the main thread.
+        textView.layoutManager?.allowsNonContiguousLayout = true
+        textView.layoutManager?.backgroundLayoutEnabled = true
 
         textView.autoresizingMask = [.width]
         textView.textContainer?.widthTracksTextView = true
@@ -219,13 +217,11 @@ struct MarkdownEditorView: NSViewRepresentable {
         if textView.string != text && !context.coordinator.isUpdating {
             context.coordinator.isUpdating = true
             let selectedRanges = textView.selectedRanges
+            // Assigning `string` replaces the full text, so the storage
+            // delegate fires with an editedRange covering the new content and
+            // the highlighter runs once for the whole document.
             textView.string = text
             textView.selectedRanges = selectedRanges
-            if let storage = textView.textStorage {
-                PerfLog.measure(.editor, "highlight.update", note: "chars=\(text.count)") {
-                    context.coordinator.highlighter.highlight(textStorage: storage)
-                }
-            }
             context.coordinator.isUpdating = false
         }
     }
