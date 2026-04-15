@@ -91,7 +91,7 @@ class PreviewViewController: QLPreviewProvider, QLPreviewingController {
     }
 
     private func jsonString(_ value: String) -> String? {
-        guard let data = try? JSONSerialization.data(withJSONObject: value) else { return nil }
+        guard let data = try? JSONEncoder().encode(value) else { return nil }
         return String(data: data, encoding: .utf8)
     }
 }
