@@ -143,24 +143,30 @@ struct MarkdownEditorView: NSViewRepresentable {
         textView.isEditable = true
         textView.isSelectable = true
         textView.allowsUndo = true
-        textView.isRichText = false
+        // Rich text is required so our syntax-highlighting attributes are
+        // actually rendered. We still suppress user-facing rich-text behaviors
+        // (link detection, smart quotes, etc.) so the content stays plain
+        // markdown — the attributes exist only as a visual overlay.
+        textView.isRichText = true
+        textView.importsGraphics = false
+        textView.allowsImageEditing = false
         textView.font = NSFont.monospacedSystemFont(ofSize: 13, weight: .regular)
+        textView.textColor = .labelColor
         textView.isAutomaticQuoteSubstitutionEnabled = false
         textView.isAutomaticDashSubstitutionEnabled = false
         textView.isAutomaticTextReplacementEnabled = false
         textView.isAutomaticSpellingCorrectionEnabled = false
+        textView.isAutomaticLinkDetectionEnabled = false
+        textView.isAutomaticDataDetectionEnabled = false
         textView.usesFindBar = true
         textView.isIncrementalSearchingEnabled = true
         textView.textContainerInset = NSSize(width: 12, height: 12)
         textView.delegate = context.coordinator
-        textView.string = text
 
-        // Syntax highlighting runs after every character edit via the
-        // textStorage delegate. Kick off an initial pass for the loaded text.
+        // Attach the syntax highlighter BEFORE inserting text so the initial
+        // load fires didProcessEditing and styles the document in one pass.
         textView.textStorage?.delegate = context.coordinator.highlighter
-        if let storage = textView.textStorage {
-            context.coordinator.highlighter.highlight(textStorage: storage)
-        }
+        textView.string = text
 
         textView.autoresizingMask = [.width]
         textView.textContainer?.widthTracksTextView = true
