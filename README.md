@@ -57,6 +57,19 @@ xcodegen generate
 
 The built app will be available as `Quilldown.dmg`.
 
+**Or, using an AI coding agent:**
+
+```bash
+# Claude Code
+claude --continue --dangerously-skip-permissions -p "build and copy to application folder"
+
+# Gemini CLI
+gemini -y -p "build and copy to application folder"
+
+# OpenAI Codex
+codex -a never "build and copy to application folder"
+```
+
 ## Usage
 
 ### Opening Files

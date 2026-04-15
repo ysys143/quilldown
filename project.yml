@@ -25,6 +25,8 @@ targets:
           - Info.plist
     resources:
       - path: Quilldown/Assets.xcassets
+    dependencies:
+      - target: QuilldownQuickLook
     postCompileScripts:
       - name: Copy Web Resources
         script: |
@@ -39,6 +41,28 @@ targets:
         CODE_SIGN_STYLE: Automatic
         ENABLE_HARDENED_RUNTIME: true
         COMBINE_HIDPI_IMAGES: true
+
+  QuilldownQuickLook:
+    type: app-extension
+    platform: macOS
+    sources:
+      - path: QuilldownQuickLook
+        excludes:
+          - Info.plist
+    postCompileScripts:
+      - name: Copy Web Resources
+        script: |
+          rsync -a "${SRCROOT}/Quilldown/Resources/" "${BUILT_PRODUCTS_DIR}/${PRODUCT_NAME}.appex/Contents/Resources/"
+        basedOnDependencyAnalysis: false
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.quilldown.app.quicklook
+        PRODUCT_NAME: QuilldownQuickLook
+        INFOPLIST_FILE: QuilldownQuickLook/Info.plist
+        CODE_SIGN_ENTITLEMENTS: QuilldownQuickLook/QuilldownQuickLook.entitlements
+        CODE_SIGN_STYLE: Automatic
+        ENABLE_HARDENED_RUNTIME: true
+        SKIP_INSTALL: YES
     info:
       path: Quilldown/Info.plist
       properties:
