@@ -88,9 +88,19 @@ final class MarkdownHighlighter: NSObject, NSTextStorageDelegate {
     private let bulkThreshold = 10_000
     private var pendingTailGeneration: Int = 0
 
+    /// One attribute batch produced by the background pattern scanner. Keeping
+    /// the plan as plain value types lets us compute on a background queue
+    /// (NSRegularExpression is thread-safe; NSTextStorage is not) and only
+    /// apply on the main thread.
+    private struct HighlightOp {
+        let range: NSRange
+        let attributes: [NSAttributedString.Key: Any]
+    }
+
     /// Applies syntax highlighting. Small edits re-process the surrounding
     /// paragraphs only. Bulk changes (initial load / large paste) paint the
-    /// first ~10KB synchronously and defer the rest to the next runloop tick.
+    /// first ~10KB synchronously and defer the rest — computed on a background
+    /// thread — to the next runloop tick.
     func highlight(textStorage: NSTextStorage, editedRange: NSRange? = nil) {
         let ns = textStorage.string as NSString
         let fullLen = ns.length
@@ -105,24 +115,34 @@ final class MarkdownHighlighter: NSObject, NSTextStorageDelegate {
             return
         }
 
-        // Bulk path: paint visible-first chunk, defer the tail.
+        // Bulk path: paint visible-first chunk, defer the tail to a background
+        // queue for matching + a main-queue hop for attribute application.
         let head = NSRange(location: 0, length: min(bulkThreshold, fullLen))
         applyPatterns(textStorage: textStorage, ns: ns, target: head, codeblocks: codeblocks)
 
         guard fullLen > bulkThreshold else { return }
         pendingTailGeneration += 1
         let generation = pendingTailGeneration
-        DispatchQueue.main.async { [weak self, weak textStorage] in
+        let snapshot = ns
+        let snapshotLen = fullLen
+        DispatchQueue.global(qos: .userInitiated).async { [weak self, weak textStorage] in
             guard let self, let textStorage else { return }
-            // Skip if a newer bulk pass superseded this one (e.g. user
-            // already started typing or reloaded the document).
-            guard generation == self.pendingTailGeneration else { return }
-            let nsNow = textStorage.string as NSString
-            guard nsNow.length > self.bulkThreshold else { return }
-            let tail = NSRange(location: self.bulkThreshold, length: nsNow.length - self.bulkThreshold)
-            let cbNow = self.computeCodeblockRanges(text: nsNow)
-            PerfLog.measure(.editor, "highlight.tail", note: "range=\(tail.length)") {
-                self.applyPatterns(textStorage: textStorage, ns: nsNow, target: tail, codeblocks: cbNow)
+            let tailStart = self.bulkThreshold
+            let tail = NSRange(location: tailStart, length: snapshotLen - tailStart)
+            let cb = self.computeCodeblockRanges(text: snapshot)
+            let tCompute = PerfLog.begin(.editor, "highlight.tail.compute")
+            let ops = self.computeOps(ns: snapshot, target: tail, codeblocks: cb)
+            PerfLog.end(tCompute, "ops=\(ops.count) range=\(tail.length)")
+
+            DispatchQueue.main.async { [weak self, weak textStorage] in
+                guard let self, let textStorage else { return }
+                // Bail if the document changed in the meantime so we don't
+                // stamp stale attributes over newly edited content.
+                guard generation == self.pendingTailGeneration else { return }
+                guard (textStorage.string as NSString).length == snapshotLen else { return }
+                PerfLog.measure(.editor, "highlight.tail.apply", note: "ops=\(ops.count)") {
+                    self.applyOps(textStorage: textStorage, ops: ops, clearRange: tail)
+                }
             }
         }
     }
@@ -193,6 +213,122 @@ final class MarkdownHighlighter: NSObject, NSTextStorageDelegate {
             textStorage.addAttribute(.font, value: baseFont, range: cb)
             textStorage.addAttribute(.foregroundColor, value: Palette.codeFg, range: cb)
             textStorage.addAttribute(.backgroundColor, value: Palette.codeBg, range: cb)
+        }
+    }
+
+    /// Runs every regex pattern over `target` and produces a plain value-type
+    /// plan that can be handed back to the main thread for application. No
+    /// NSTextStorage access — thread-safe.
+    private func computeOps(ns: NSString, target: NSRange, codeblocks: [NSRange]) -> [HighlightOp] {
+        var ops: [HighlightOp] = []
+        ops.reserveCapacity(128)
+        ops.append(HighlightOp(range: target, attributes: [
+            .font: baseFont,
+            .foregroundColor: Palette.base,
+        ]))
+        applyToOps(reHeading, in: ns, range: target, excluding: codeblocks, ops: &ops) { m in
+            [HighlightOp(range: m.range, attributes: [
+                .font: headingFont,
+                .foregroundColor: Palette.heading,
+            ])]
+        }
+        applyToOps(reHorizontal, in: ns, range: target, excluding: codeblocks, ops: &ops) { m in
+            [HighlightOp(range: m.range, attributes: [.foregroundColor: Palette.muted])]
+        }
+        applyToOps(reBold, in: ns, range: target, excluding: codeblocks, ops: &ops) { m in
+            [HighlightOp(range: m.range, attributes: [
+                .font: boldFont,
+                .foregroundColor: Palette.bold,
+            ])]
+        }
+        applyToOps(reItalicStar, in: ns, range: target, excluding: codeblocks, ops: &ops) { m in
+            [HighlightOp(range: m.range, attributes: [
+                .font: italicFont,
+                .foregroundColor: Palette.italic,
+            ])]
+        }
+        applyToOps(reItalicUnder, in: ns, range: target, excluding: codeblocks, ops: &ops) { m in
+            [HighlightOp(range: m.range, attributes: [
+                .font: italicFont,
+                .foregroundColor: Palette.italic,
+            ])]
+        }
+        applyToOps(reStrike, in: ns, range: target, excluding: codeblocks, ops: &ops) { m in
+            [HighlightOp(range: m.range, attributes: [
+                .foregroundColor: Palette.muted,
+                .strikethroughStyle: NSUnderlineStyle.single.rawValue,
+            ])]
+        }
+        applyToOps(reLink, in: ns, range: target, excluding: codeblocks, ops: &ops) { m in
+            [
+                HighlightOp(range: m.range, attributes: [.foregroundColor: Palette.link]),
+                HighlightOp(range: m.range(at: 2), attributes: [.underlineStyle: NSUnderlineStyle.single.rawValue]),
+            ]
+        }
+        applyToOps(reBlockquote, in: ns, range: target, excluding: codeblocks, ops: &ops) { m in
+            [HighlightOp(range: m.range, attributes: [
+                .foregroundColor: Palette.muted,
+                .font: italicFont,
+            ])]
+        }
+        applyToOps(reListMarker, in: ns, range: target, excluding: codeblocks, ops: &ops) { m in
+            [HighlightOp(range: m.range(at: 2), attributes: [
+                .foregroundColor: Palette.listMarker,
+                .font: boldFont,
+            ])]
+        }
+        applyToOps(reMathBlock, in: ns, range: target, excluding: codeblocks, ops: &ops) { m in
+            [HighlightOp(range: m.range, attributes: [.foregroundColor: Palette.math])]
+        }
+        applyToOps(reMathInline, in: ns, range: target, excluding: codeblocks, ops: &ops) { m in
+            [HighlightOp(range: m.range, attributes: [.foregroundColor: Palette.math])]
+        }
+        applyToOps(reInlineCode, in: ns, range: target, excluding: codeblocks, ops: &ops) { m in
+            [HighlightOp(range: m.range, attributes: [
+                .foregroundColor: Palette.codeFg,
+                .backgroundColor: Palette.codeBg,
+            ])]
+        }
+        for cb in codeblocks where NSIntersectionRange(cb, target).length > 0 {
+            ops.append(HighlightOp(range: cb, attributes: [
+                .font: baseFont,
+                .foregroundColor: Palette.codeFg,
+                .backgroundColor: Palette.codeBg,
+            ]))
+        }
+        return ops
+    }
+
+    private func applyToOps(
+        _ re: NSRegularExpression,
+        in text: NSString,
+        range: NSRange,
+        excluding: [NSRange],
+        ops: inout [HighlightOp],
+        handler: (NSTextCheckingResult) -> [HighlightOp]
+    ) {
+        re.enumerateMatches(in: text as String, range: range) { match, _, _ in
+            guard let match = match else { return }
+            for ex in excluding where NSIntersectionRange(ex, match.range).length > 0 {
+                return
+            }
+            ops.append(contentsOf: handler(match))
+        }
+    }
+
+    /// Applies a pre-computed plan produced by `computeOps`. Must run on the
+    /// main thread since it mutates NSTextStorage.
+    private func applyOps(textStorage: NSTextStorage, ops: [HighlightOp], clearRange: NSRange) {
+        guard clearRange.length > 0 else { return }
+        textStorage.beginEditing()
+        defer { textStorage.endEditing() }
+        textStorage.removeAttribute(.backgroundColor, range: clearRange)
+        textStorage.removeAttribute(.strikethroughStyle, range: clearRange)
+        textStorage.removeAttribute(.underlineStyle, range: clearRange)
+        for op in ops {
+            for (key, value) in op.attributes {
+                textStorage.addAttribute(key, value: value, range: op.range)
+            }
         }
     }
 
