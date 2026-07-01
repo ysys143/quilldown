@@ -137,9 +137,58 @@
                 // KaTeX not yet loaded: emit placeholder; a second pass after
                 // loadKatex() resolves will render it.
                 const encoded = token.content.trim().replace(/&/g, '&amp;').replace(/</g, '&lt;');
-                return `<div class="math-block math-pending"${lineAttr} data-math-src="${encoded}">${encoded}</div>`;
+                return `<div class="math-block math-pending math-pending-block"${lineAttr} data-math-display="true" data-math-src="${encoded}">${encoded}</div>`;
             }
             return defaultFence(tokens, idx, options, env, self);
+        };
+
+        // Math inline rule: $...$ and $$...$$, registered before 'emphasis' so raw
+        // math content (underscores, asterisks) is protected as an atomic token —
+        // mirrors the fenced ```math handling above, which never suffers this bug
+        // because it receives raw token.content directly.
+        md.inline.ruler.before('emphasis', 'math_inline', function(state, silent) {
+            const src = state.src;
+            const start = state.pos;
+            if (src.charCodeAt(start) !== 0x24 /* $ */) return false;
+
+            const display = src.charCodeAt(start + 1) === 0x24;
+            const delimLen = display ? 2 : 1;
+            const nextChar = src.charCodeAt(start + delimLen);
+            if (isNaN(nextChar) || nextChar === 0x20 || nextChar === 0x09) return false;
+
+            let pos = start + delimLen, found = -1;
+            while (pos < state.posMax) {
+                const c = src.charCodeAt(pos);
+                if (c === 0x24 && (!display || src.charCodeAt(pos + 1) === 0x24)) { found = pos; break; }
+                pos++;
+            }
+            if (found === -1) return false; // no closing pair -> fall back to literal "$" (e.g. "$5 and $10")
+
+            const content = src.slice(start + delimLen, found);
+            if (!content || /^\s|\s$/.test(content)) return false; // space next to delimiter -> not math
+
+            if (!silent) {
+                const token = state.push('math_inline', 'math', 0);
+                token.content = content;
+                token.display = display;
+            }
+            state.pos = found + delimLen;
+            return true;
+        });
+
+        md.renderer.rules.math_inline = function(tokens, idx) {
+            const token = tokens[idx];
+            const display = !!token.display;
+            if (typeof katex !== 'undefined') {
+                try {
+                    return katex.renderToString(token.content, { displayMode: display, throwOnError: false });
+                } catch (e) {
+                    return `<span class="mermaid-error">${md.utils.escapeHtml(e.message)}</span>`;
+                }
+            }
+            const encoded = md.utils.escapeHtml(token.content);
+            const tag = display ? 'div' : 'span';
+            return `<${tag} class="math-pending${display ? ' math-pending-block' : ' math-pending-inline'}" data-math-display="${display}" data-math-src="${encoded}">${encoded}</${tag}>`;
         };
 
         // Source line mapping for scroll sync
@@ -312,20 +361,23 @@
                     var pending = container.querySelectorAll('.math-pending');
                     for (var el of pending) {
                         var src = el.getAttribute('data-math-src') || el.textContent;
+                        var display = el.getAttribute('data-math-display') !== 'false';
                         try {
-                            var rendered = katex.renderToString(src, { displayMode: true, throwOnError: false });
+                            var rendered = katex.renderToString(src, { displayMode: display, throwOnError: false });
                             var frag = document.createRange().createContextualFragment(rendered);
                             el.replaceChildren(frag);
-                            el.classList.remove('math-pending');
+                            el.classList.remove('math-pending', 'math-pending-inline', 'math-pending-block');
                         } catch (e) {
                             el.textContent = src;
                         }
                     }
+                    // $ and $$ are now tokenized and rendered at the markdown-it parser
+                    // level (see md.inline.ruler.before('emphasis', 'math_inline', ...)
+                    // above), so only the LaTeX-escape delimiters remain here to avoid
+                    // double-processing already-rendered KaTeX output.
                     if (typeof renderMathInElement === 'function') {
                         renderMathInElement(container, {
                             delimiters: [
-                                {left: '$$', right: '$$', display: true},
-                                {left: '$', right: '$', display: false},
                                 {left: '\\(', right: '\\)', display: false},
                                 {left: '\\[', right: '\\]', display: true}
                             ],
