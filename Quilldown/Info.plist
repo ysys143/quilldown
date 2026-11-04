@@ -17,6 +17,8 @@
 			<array>
 				<string>net.daringfireball.markdown</string>
 			</array>
+			<key>NSDocumentClass</key>
+			<string>MarkdownDocument</string>
 		</dict>
 	</array>
 	<key>CFBundleExecutable</key>
@@ -30,9 +32,9 @@
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
-	<string>1.1.0</string>
+	<string>$(MARKETING_VERSION)</string>
 	<key>CFBundleVersion</key>
-	<string>2</string>
+	<string>$(CURRENT_PROJECT_VERSION)</string>
 	<key>UTImportedTypeDeclarations</key>
 	<array>
 		<dict>

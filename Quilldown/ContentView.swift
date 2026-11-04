@@ -1,10 +1,9 @@
 import SwiftUI
 
 struct ContentView: View {
-    @Binding var document: MarkdownDocument
-    let fileURL: URL?
+    @ObservedObject var document: MarkdownDocument
+    private var fileURL: URL? { document.fileURL }
 
-    @StateObject private var fileWatcher = FileWatcher()
     @StateObject private var syncCoordinator = SyncCoordinator()
     @State private var tocItems: [TOCItem] = []
     @State private var showSidebar = false
@@ -44,9 +43,6 @@ struct ContentView: View {
         .background(.background)
         .onAppear {
             tocItems = parseTableOfContents(from: document.text)
-            if let url = fileURL {
-                fileWatcher.watch(url: url)
-            }
         }
         .onChange(of: document.text) {
             tocUpdateWorkItem?.cancel()
@@ -55,9 +51,6 @@ struct ContentView: View {
             }
             tocUpdateWorkItem = work
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.5, execute: work)
-        }
-        .onChange(of: fileWatcher.lastChangeDate) {
-            reloadFile()
         }
         .onChange(of: viewMode) { oldMode, newMode in
             DispatchQueue.main.async {
@@ -87,71 +80,15 @@ struct ContentView: View {
             }
         }
         .onReceive(NotificationCenter.default.publisher(for: .reloadDocument)) { _ in
-            reloadFile()
-        }
-        .toolbar {
-            ToolbarItem(placement: .navigation) {
-                Button(action: {
-                    withAnimation(.easeInOut(duration: 0.2)) {
-                        showSidebar.toggle()
-                    }
-                }) {
-                    Image(systemName: "sidebar.left")
-                }
-                .help("Toggle Sidebar (Cmd+B)")
-            }
-
-            ToolbarItem(placement: .principal) {
-                Picker("View Mode", selection: $viewMode) {
-                    ForEach(ViewMode.allCases, id: \.self) { mode in
-                        Label(mode.rawValue, systemImage: mode.icon)
-                            .tag(mode)
-                    }
-                }
-                .pickerStyle(.segmented)
-                .frame(width: 200)
-            }
-
-            ToolbarItem(placement: .navigation) {
-                Button(action: {
-                    if let wv = WebViewStore.shared.activeWebView {
-                        wv.magnification = min(wv.magnification + 0.1, 3.0)
-                    }
-                }) {
-                    Image(systemName: "plus.magnifyingglass")
-                }
-                .help("Zoom In")
-                .keyboardShortcut("=", modifiers: .command)
-            }
-            ToolbarItem(placement: .navigation) {
-                Button(action: {
-                    if let wv = WebViewStore.shared.activeWebView {
-                        wv.magnification = max(wv.magnification - 0.1, 0.5)
-                    }
-                }) {
-                    Image(systemName: "minus.magnifyingglass")
-                }
-                .help("Zoom Out")
-                .keyboardShortcut("-", modifiers: .command)
-            }
-
-            // Toolbar find affordance. When inactive, shows a single
-            // magnifying-glass button. When Cmd+F (or the button) activates
-            // search in preview/split, the button is replaced by a native
-            // NSSearchField (same look as Notes.app) in the same slot.
-            if isSearchVisible && viewMode != .editor {
-                ToolbarItem(placement: .primaryAction) {
-                    PreviewSearchBar(query: $searchQuery, isVisible: $isSearchVisible)
-                }
-            } else {
-                ToolbarItem(placement: .primaryAction) {
-                    Button(action: invokeFind) {
-                        Image(systemName: "magnifyingglass")
-                    }
-                    .help("Find (Cmd+F)")
-                }
+            if document.windowControllers.contains(where: { $0.window?.isKeyWindow == true }) {
+                document.reloadFromDisk()
             }
         }
+        .background(DocumentToolbar(
+            navigation: AnyView(toolbarNavigation),
+            principal: AnyView(toolbarModePicker),
+            trailing: AnyView(toolbarSearch)
+        ))
         // Hidden buttons for keyboard shortcuts
         .background {
             Group {
@@ -180,6 +117,58 @@ struct ContentView: View {
         }
     }
 
+    private var toolbarNavigation: some View {
+        HStack(spacing: 12) {
+            Button {
+                withAnimation(.easeInOut(duration: 0.2)) { showSidebar.toggle() }
+            } label: {
+                Image(systemName: "sidebar.left")
+            }
+            .help("Toggle Sidebar (Cmd+B)")
+
+            Button {
+                if let webView = WebViewStore.shared.activeWebView {
+                    webView.magnification = min(webView.magnification + 0.1, 3.0)
+                }
+            } label: {
+                Image(systemName: "plus.magnifyingglass")
+            }
+            .help("Zoom In")
+            .keyboardShortcut("=", modifiers: .command)
+
+            Button {
+                if let webView = WebViewStore.shared.activeWebView {
+                    webView.magnification = max(webView.magnification - 0.1, 0.5)
+                }
+            } label: {
+                Image(systemName: "minus.magnifyingglass")
+            }
+            .help("Zoom Out")
+            .keyboardShortcut("-", modifiers: .command)
+        }
+        .fixedSize()
+    }
+
+    private var toolbarModePicker: some View {
+        Picker("View Mode", selection: $viewMode) {
+            ForEach(ViewMode.allCases, id: \.self) { mode in
+                Label(mode.rawValue, systemImage: mode.icon).tag(mode)
+            }
+        }
+        .pickerStyle(.segmented)
+        .frame(width: 200)
+    }
+
+    @ViewBuilder
+    private var toolbarSearch: some View {
+        if isSearchVisible && viewMode != .editor {
+            PreviewSearchBar(query: $searchQuery, isVisible: $isSearchVisible)
+        } else {
+            Button(action: invokeFind) { Image(systemName: "magnifyingglass") }
+                .help("Find (Cmd+F)")
+        }
+    }
+
     // Intercepts Cmd+F at the window level. SwiftUI apps don't install the
     // default Edit ▸ Find menu, so NSTextView's `usesFindBar = true` has no
     // way to receive `performFindPanelAction:` unless we dispatch it manually.
@@ -193,7 +182,7 @@ struct ContentView: View {
             // kVK_ANSI_F == 3.
             let cmdF = event.modifierFlags.contains(.command)
                 && event.keyCode == 3
-            guard cmdF else { return event }
+            guard cmdF, document.windowControllers.contains(where: { $0.window === event.window }) else { return event }
             invokeFind()
             return nil
         }
@@ -258,11 +247,65 @@ struct ContentView: View {
         }
     }
 
-    private func reloadFile() {
-        guard let url = fileURL,
-              let data = try? Data(contentsOf: url),
-              let text = String(data: data, encoding: .utf8) else { return }
-        document.text = text
-        tocItems = parseTableOfContents(from: text)
+}
+
+/// NSHostingController does not install SwiftUI scene toolbars. Keep these
+/// controls in the native titlebar while NSDocument owns the window lifecycle.
+private struct DocumentToolbar: NSViewRepresentable {
+    let navigation: AnyView
+    let principal: AnyView
+    let trailing: AnyView
+
+    final class AnchorView: NSView {
+        var attach: ((NSWindow) -> Void)?
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            if let window { attach?(window) }
+        }
+    }
+
+    final class Coordinator: NSObject, NSToolbarDelegate {
+        let hosts = (0..<3).map { _ in NSHostingView(rootView: AnyView(EmptyView())) }
+        let identifiers = ["navigation", "viewMode", "search"].map { NSToolbarItem.Identifier($0) }
+        weak var window: NSWindow?
+
+        func attach(to window: NSWindow) {
+            guard self.window !== window else { return }
+            self.window = window
+            let toolbar = NSToolbar(identifier: "MarkdownToolbar")
+            toolbar.delegate = self
+            toolbar.displayMode = .iconOnly
+            toolbar.centeredItemIdentifiers = [identifiers[1]]
+            window.toolbar = toolbar
+            window.toolbarStyle = .unified
+        }
+
+        func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
+            [identifiers[0], .flexibleSpace, identifiers[1], .flexibleSpace, identifiers[2]]
+        }
+        func toolbarAllowedItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
+            identifiers + [.flexibleSpace]
+        }
+        func toolbar(_ toolbar: NSToolbar, itemForItemIdentifier itemIdentifier: NSToolbarItem.Identifier,
+                     willBeInsertedIntoToolbar flag: Bool) -> NSToolbarItem? {
+            guard let index = identifiers.firstIndex(of: itemIdentifier) else { return nil }
+            let item = NSToolbarItem(itemIdentifier: itemIdentifier)
+            item.view = hosts[index]
+            item.isNavigational = index == 0
+            return item
+        }
+    }
+
+    func makeCoordinator() -> Coordinator { Coordinator() }
+    func makeNSView(context: Context) -> AnchorView {
+        let anchor = AnchorView()
+        anchor.attach = { [weak coordinator = context.coordinator] in coordinator?.attach(to: $0) }
+        return anchor
+    }
+    func updateNSView(_ view: AnchorView, context: Context) {
+        context.coordinator.hosts[0].rootView = navigation
+        context.coordinator.hosts[1].rootView = principal
+        context.coordinator.hosts[2].rootView = trailing
+        if let window = view.window { context.coordinator.attach(to: window) }
     }
 }

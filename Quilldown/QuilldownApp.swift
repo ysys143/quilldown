@@ -8,12 +8,31 @@ extension Notification.Name {
 
 @main
 struct QuilldownApp: App {
+
+    @NSApplicationDelegateAdaptor(DocumentAppDelegate.self) private var appDelegate
+
     var body: some Scene {
-        DocumentGroup(newDocument: MarkdownDocument()) { config in
-            ContentView(document: config.$document, fileURL: config.fileURL)
-        }
-        .defaultSize(width: 1100, height: 750)
+        Settings { EmptyView() }
         .commands {
+            CommandGroup(replacing: .newItem) {
+                Button("New") { NSDocumentController.shared.newDocument(nil) }
+                    .keyboardShortcut("n", modifiers: .command)
+                Button("Open...") { NSDocumentController.shared.openDocument(nil) }
+                    .keyboardShortcut("o", modifiers: .command)
+                Menu("Open Recent") {
+                    ForEach(NSDocumentController.shared.recentDocumentURLs, id: \.self) { url in
+                        Button(url.lastPathComponent) {
+                            NSDocumentController.shared.openDocument(withContentsOf: url, display: true) { _, _, _ in }
+                        }
+                    }
+                }
+            }
+            CommandGroup(replacing: .saveItem) {
+                Button("Save") { NSDocumentController.shared.currentDocument?.save(nil) }
+                    .keyboardShortcut("s", modifiers: .command)
+                Button("Save As...") { NSDocumentController.shared.currentDocument?.saveAs(nil) }
+                    .keyboardShortcut("s", modifiers: [.command, .shift])
+            }
             CommandGroup(after: .toolbar) {
                 Button("Zoom In") {
                     if let wv = WebViewStore.shared.activeWebView {
@@ -71,5 +90,31 @@ struct QuilldownApp: App {
                 }
             }
         }
+    }
+}
+
+final class DocumentAppDelegate: NSObject, NSApplicationDelegate {
+    func applicationWillFinishLaunching(_ notification: Notification) {
+        _ = NSDocumentController.shared
+    }
+
+    func applicationShouldOpenUntitledFile(_ sender: NSApplication) -> Bool { true }
+
+    func applicationOpenUntitledFile(_ sender: NSApplication) -> Bool {
+        NSDocumentController.shared.newDocument(nil)
+        return true
+    }
+
+    func application(_ application: NSApplication, open urls: [URL]) {
+        for url in urls {
+            NSDocumentController.shared.openDocument(withContentsOf: url, display: true) { _, _, error in
+                if let error { application.presentError(error) }
+            }
+        }
+    }
+
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        if !flag { NSDocumentController.shared.newDocument(nil) }
+        return true
     }
 }

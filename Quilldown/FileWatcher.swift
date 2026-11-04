@@ -1,64 +1,58 @@
 import Foundation
 import Combine
 
-class FileWatcher: ObservableObject {
+final class FileWatcher: ObservableObject {
     @Published var lastChangeDate = Date()
-    private var fileDescriptor: Int32 = -1
-    private var source: DispatchSourceFileSystemObject?
-    private var debounceTimer: Timer?
+    private var fileSource: DispatchSourceFileSystemObject?
+    private var directorySource: DispatchSourceFileSystemObject?
+    private var debounceWork: DispatchWorkItem?
     private var watchedURL: URL?
 
     func watch(url: URL) {
         stopWatching()
         watchedURL = url
+        // The parent survives atomic saves and delayed delete/recreate cycles.
+        // The file source also catches in-place writes, which need not emit a
+        // directory event. Each source owns its descriptor until cancellation.
+        directorySource = makeSource(url: url.deletingLastPathComponent())
+        fileSource = makeSource(url: url)
+    }
 
-        fileDescriptor = open(url.path, O_EVTONLY)
-        guard fileDescriptor >= 0 else { return }
-
-        source = DispatchSource.makeFileSystemObjectSource(
-            fileDescriptor: fileDescriptor,
-            eventMask: [.write, .rename, .delete],
+    private func makeSource(url: URL) -> DispatchSourceFileSystemObject? {
+        let descriptor = open(url.path, O_EVTONLY)
+        guard descriptor >= 0 else { return nil }
+        let source = DispatchSource.makeFileSystemObjectSource(
+            fileDescriptor: descriptor,
+            eventMask: [.write, .extend, .attrib, .rename, .delete, .revoke],
             queue: .main
         )
+        source.setEventHandler { [weak self] in self?.scheduleChange() }
+        source.setCancelHandler { close(descriptor) }
+        source.resume()
+        return source
+    }
 
-        source?.setEventHandler { [weak self] in
-            guard let self = self else { return }
-
-            let events = self.source?.data ?? []
-
-            // For rename/delete events, re-establish the watcher
-            // (editors like vim/emacs save via rename, which invalidates the old inode)
-            if events.contains(.rename) || events.contains(.delete) {
-                if let url = self.watchedURL {
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                        self.watch(url: url)
-                    }
-                }
-            }
-
-            self.debounceTimer?.invalidate()
-            self.debounceTimer = Timer.scheduledTimer(withTimeInterval: 0.3, repeats: false) { _ in
-                self.lastChangeDate = Date()
-            }
+    func scheduleChange() {
+        debounceWork?.cancel()
+        let work = DispatchWorkItem { [weak self] in
+            guard let self, let url = self.watchedURL else { return }
+            self.fileSource?.cancel()
+            self.fileSource = self.makeSource(url: url)
+            self.lastChangeDate = Date()
         }
-
-        source?.setCancelHandler { [weak self] in
-            if let fd = self?.fileDescriptor, fd >= 0 {
-                close(fd)
-            }
-            self?.fileDescriptor = -1
-        }
-
-        source?.resume()
+        debounceWork = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.12, execute: work)
     }
 
     func stopWatching() {
-        source?.cancel()
-        source = nil
-        debounceTimer?.invalidate()
+        debounceWork?.cancel()
+        debounceWork = nil
+        watchedURL = nil
+        fileSource?.cancel()
+        fileSource = nil
+        directorySource?.cancel()
+        directorySource = nil
     }
 
-    deinit {
-        stopWatching()
-    }
+    deinit { stopWatching() }
 }
