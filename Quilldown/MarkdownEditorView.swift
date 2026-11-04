@@ -11,6 +11,7 @@ struct MarkdownEditorView: NSViewRepresentable {
         var isSyncScrolling = false
         weak var scrollView: NSScrollView?
         let highlighter = MarkdownHighlighter()
+        var pendingExternalText: String?
 
         init(parent: MarkdownEditorView) {
             self.parent = parent
@@ -18,9 +19,79 @@ struct MarkdownEditorView: NSViewRepresentable {
 
         func textDidChange(_ notification: Notification) {
             guard !isUpdating, let textView = notification.object as? NSTextView else { return }
+            if let pendingExternalText {
+                if !textView.hasMarkedText() {
+                    self.pendingExternalText = nil
+                    replaceText(pendingExternalText, in: textView)
+                }
+                return
+            }
             parent.text = textView.string
-            if let storage = textView.textStorage {
-                highlighter.highlight(textStorage: storage)
+            // Highlighting is driven by the NSTextStorageDelegate (see
+            // highlighter) so it can run paragraph-scoped using editedRange.
+        }
+
+        /// Replace only the changed span. Preserve the viewport's text anchor,
+        /// rather than assigning `string` and resetting the entire layout.
+        func replaceText(_ text: String, in textView: NSTextView) {
+            guard textView.string != text else { return }
+            if textView.hasMarkedText() {
+                pendingExternalText = text
+                return
+            }
+            pendingExternalText = nil
+            let old = textView.string
+            let prefix = zip(old, text).prefix { $0 == $1 }.map(\.0)
+            let prefixLength = String(prefix).utf16.count
+            let oldRest = old.dropFirst(prefix.count)
+            let newRest = text.dropFirst(prefix.count)
+            let suffix = zip(oldRest.reversed(), newRest.reversed()).prefix { $0 == $1 }.map(\.0)
+            let suffixLength = String(suffix).utf16.count
+            let replaced = NSRange(location: prefixLength, length: old.utf16.count - prefixLength - suffixLength)
+            let insertedLength = text.utf16.count - prefixLength - suffixLength
+            let inserted = (text as NSString).substring(with: NSRange(location: prefixLength, length: insertedLength))
+            func mapped(_ offset: Int) -> Int {
+                if offset <= replaced.location { return offset }
+                if offset >= NSMaxRange(replaced) { return offset + insertedLength - replaced.length }
+                return replaced.location + min(offset - replaced.location, insertedLength)
+            }
+
+            let selections = textView.selectedRanges.map { value -> NSValue in
+                let range = value.rangeValue
+                let start = mapped(range.location)
+                return NSValue(range: NSRange(location: start, length: max(0, mapped(NSMaxRange(range)) - start)))
+            }
+            let clip = textView.enclosingScrollView?.contentView
+            let origin = clip?.bounds.origin ?? .zero
+            let layout = textView.layoutManager
+            var anchor: Int?
+            var anchorOffset: CGFloat = 0
+            if let layout, let container = textView.textContainer, !old.isEmpty {
+                let rect = (clip?.bounds ?? .zero).offsetBy(dx: -textView.textContainerOrigin.x, dy: -textView.textContainerOrigin.y)
+                let glyphs = layout.glyphRange(forBoundingRect: rect, in: container)
+                if glyphs.length > 0 {
+                    anchor = mapped(layout.characterIndexForGlyph(at: glyphs.location))
+                    anchorOffset = origin.y - layout.lineFragmentRect(forGlyphAt: glyphs.location, effectiveRange: nil).minY
+                }
+            }
+
+            isUpdating = true
+            let wasSyncScrolling = isSyncScrolling
+            isSyncScrolling = true
+            defer { isUpdating = false; isSyncScrolling = wasSyncScrolling }
+            textView.breakUndoCoalescing()
+            textView.undoManager?.removeAllActions()
+            textView.textStorage?.replaceCharacters(in: replaced, with: inserted)
+            textView.selectedRanges = selections
+            var restored = origin
+            if let anchor, let layout, anchor < text.utf16.count {
+                layout.ensureLayout(forCharacterRange: NSRange(location: anchor, length: 1))
+                let glyph = layout.glyphIndexForCharacter(at: anchor)
+                restored.y = layout.lineFragmentRect(forGlyphAt: glyph, effectiveRange: nil).minY + anchorOffset
+            }
+            if let clip {
+                clip.scroll(to: clip.constrainBoundsRect(NSRect(origin: restored, size: clip.bounds.size)).origin)
+                textView.enclosingScrollView?.reflectScrolledClipView(clip)
             }
         }
 
@@ -142,6 +213,8 @@ struct MarkdownEditorView: NSViewRepresentable {
     }
 
     func makeNSView(context: Context) -> NSScrollView {
+        let tMake = PerfLog.begin(.editor, "makeNSView")
+        defer { PerfLog.end(tMake, "chars=\(text.count)") }
         let textView = NSTextView()
         textView.isEditable = true
         textView.isSelectable = true
@@ -161,6 +234,7 @@ struct MarkdownEditorView: NSViewRepresentable {
         textView.isAutomaticSpellingCorrectionEnabled = false
         textView.isAutomaticLinkDetectionEnabled = false
         textView.isAutomaticDataDetectionEnabled = false
+        textView.smartInsertDeleteEnabled = false
         textView.usesFindBar = true
         textView.isIncrementalSearchingEnabled = true
         textView.textContainerInset = NSSize(width: 32, height: 16)
@@ -169,14 +243,17 @@ struct MarkdownEditorView: NSViewRepresentable {
         textView.textContainer?.lineFragmentPadding = 0
         textView.delegate = context.coordinator
 
+        // Attach the highlighter as the storage delegate BEFORE assigning the
+        // initial text, so the first character edit queues a full highlight.
+        // Subsequent edits use the same deferred attribute-only transaction
+        // with a paragraph-scoped editedRange.
+        textView.textStorage?.delegate = context.coordinator.highlighter
         textView.string = text
 
-        // Apply syntax highlighting to the initial content. Subsequent edits
-        // flow through `textDidChange` which re-highlights the document, and
-        // external reloads are covered by `updateNSView`.
-        if let storage = textView.textStorage {
-            context.coordinator.highlighter.highlight(textStorage: storage)
-        }
+        // Layout performance: allow idle-time layout and non-contiguous
+        // viewport-only layout so large documents don't stall the main thread.
+        textView.layoutManager?.allowsNonContiguousLayout = true
+        textView.layoutManager?.backgroundLayoutEnabled = true
 
         textView.autoresizingMask = [.width]
         textView.textContainer?.widthTracksTextView = true
@@ -210,15 +287,12 @@ struct MarkdownEditorView: NSViewRepresentable {
         context.coordinator.scrollView = scrollView
         syncCoordinator?.editorCoordinator = context.coordinator
 
+        if context.coordinator.pendingExternalText != nil {
+            context.coordinator.pendingExternalText = text
+        }
+
         if textView.string != text && !context.coordinator.isUpdating {
-            context.coordinator.isUpdating = true
-            let selectedRanges = textView.selectedRanges
-            textView.string = text
-            textView.selectedRanges = selectedRanges
-            if let storage = textView.textStorage {
-                context.coordinator.highlighter.highlight(textStorage: storage)
-            }
-            context.coordinator.isUpdating = false
+            context.coordinator.replaceText(text, in: textView)
         }
     }
 }

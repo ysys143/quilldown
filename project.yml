@@ -44,8 +44,11 @@ targets:
     info:
       path: Quilldown/Info.plist
       properties:
+        CFBundleShortVersionString: "$(MARKETING_VERSION)"
+        CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
         CFBundleDocumentTypes:
-          - CFBundleTypeName: Markdown Document
+          - NSDocumentClass: MarkdownDocument
+            CFBundleTypeName: Markdown Document
             CFBundleTypeRole: Editor
             LSHandlerRank: Alternate
             LSItemContentTypes:
@@ -83,3 +86,25 @@ targets:
         CODE_SIGN_STYLE: Automatic
         ENABLE_HARDENED_RUNTIME: true
         SKIP_INSTALL: YES
+
+  QuilldownTests:
+    type: bundle.unit-test
+    platform: macOS
+    sources:
+      - path: Tests
+        excludes:
+          - Fixtures/**
+    dependencies:
+      - target: Quilldown
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: true
+
+schemes:
+  Quilldown:
+    build:
+      targets:
+        Quilldown: all
+    test:
+      targets:
+        - QuilldownTests

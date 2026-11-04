@@ -139,7 +139,7 @@ The table of contents sidebar automatically generates from your document's headi
 
 ### External File Watching
 
-When you open a markdown file, Quilldown watches for changes. If the file is modified by an external editor (vim, VS Code, etc.), the app automatically refreshes the content. Perfect for syncing edits across multiple tools.
+When you open a markdown file, Quilldown watches for changes. If the file is modified by an external editor (vim, VS Code, etc.), the app automatically refreshes the content. External changes take priority over unsaved local edits and are applied without a confirmation dialog. The editor preserves the selection and visible text position; updates received during IME composition are applied after composition ends.
 
 ### PDF Export
 
@@ -242,6 +242,15 @@ Quilldown/               # macOS native app (SwiftUI + WebKit)
 └── Info.plist           # App metadata
 Quilldown.exe            # Windows version
 ```
+
+### Regression Tests
+
+```bash
+xcodegen generate
+xcodebuild -project Quilldown.xcodeproj -scheme Quilldown -configuration Debug CODE_SIGN_IDENTITY=- test
+```
+
+The macOS tests cover Korean font fallback after editing, incremental highlighting against full highlighting, pending background work, external writes and atomic replacements, selection and scroll preservation, IME composition, saving, undo, and document window controls.
 
 ### Building for Distribution
 
