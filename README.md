@@ -265,7 +265,32 @@ xcrun stapler staple Quilldown.dmg
 
 ## Changelog
 
-### 2026-04-15
+### v1.1.2 — 2026-04-16
+
+- Android viewer app (Kotlin + WebView) that reuses the same `render.html` + markdown-it / KaTeX / Prism bundle. File picker via Storage Access Framework, recent files list with preview snippet, `ACTION_VIEW` intent handler. Signed release APK attached to the release page.
+- Fix: macOS app icon no longer shows a thin white halo in the Dock — the source PNG had a ~7px light frame that leaked through macOS's squircle mask. Re-masked with proper transparent corners (radius ~180) and regenerated every asset size.
+
+### v1.1.1 — 2026-04-15 (performance)
+
+**Dramatic first-open and typing improvements.** Measured against a 87.5KB document:
+
+- **Editor first paint**: 257ms main-thread freeze -> **40ms** (-85%)
+- **Editor bulk tail (main blocking)**: 208ms -> **19ms** (-91%) — regex matching now runs on a background queue, the main thread only applies attributes
+- **Second document open (pool hit)**: ~830ms -> **~285ms** (-66%)
+- **Cold-launch first open**: 830ms -> ~560ms (-33%)
+- **Cmd+F first call**: ~300ms -> ~0ms (engine pre-warmed after initial render)
+
+Techniques applied:
+
+- WKWebView pool: one WKWebView is warmed with `render.html` during `App.init` and handed off to the first `MarkdownWebView`; closed documents return the instance for reuse
+- Editor incremental highlighting via `NSTextStorageDelegate` + `NSString.paragraphRange` — typing in a 100KB document now re-processes only the surrounding paragraph
+- Bulk highlight split: visible first 10KB applied synchronously, tail computed on a `DispatchQueue.global(qos: .userInitiated)` and applied on main as a single batched `beginEditing`/`endEditing` block
+- Prism language plugins (18 files, ~40KB) and KaTeX (272KB) are now lazy-loaded via dynamic `<script>` injection, triggered only when a matching code block / math expression appears
+- WKWebView `wantsLayer = true`, NSTextView `allowsNonContiguousLayout` + `backgroundLayoutEnabled`
+- `WKWebView.find` engine pre-warming after initial render so the user's first Cmd+F avoids the ~300ms indexing cost
+- `os_signpost` instrumentation (`com.quilldown.perf` subsystem) for before/after measurement
+
+### v1.1.0 — 2026-04-15
 
 - **QuickLook extension**: Finder Space preview for `.md` files with full rendering (markdown-it + KaTeX + Prism + Mermaid). Implemented via the data-based `QLPreviewProvider` / `QLPreviewReply` API so the extension generates a self-contained HTML string and QuickLook renders it — no WKWebView inside the sandboxed extension.
 - **Editor syntax highlighting**: Live Sublime-style coloring powered by `NSTextStorageDelegate` + `NSRegularExpression`. Covers headings, bold/italic/strike, inline code, fenced code blocks, links, blockquotes, list markers, and inline/display math. Palette adapts to light/dark mode.

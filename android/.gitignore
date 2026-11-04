@@ -1,0 +1,20 @@
+# Gradle
+.gradle/
+build/
+local.properties
+
+# IDE
+.idea/
+*.iml
+*.iws
+*.ipr
+.vscode/
+
+# Keystore
+*.jks
+*.keystore
+
+# Generated
+captures/
+output.json
+.cxx/

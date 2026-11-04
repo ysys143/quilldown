@@ -36,3 +36,4 @@ quilldown-tauri/src/fonts/
 
 # OMC
 .omc/
+.cwf/

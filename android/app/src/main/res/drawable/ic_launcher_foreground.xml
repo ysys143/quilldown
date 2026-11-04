@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Centered rounded square containing a stylized "Q" glyph -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M54,36 A18,18 0 1,0 54,72 A18,18 0 1,0 54,36 Z M54,44 A10,10 0 1,1 54,64 A10,10 0 1,1 54,44 Z" />
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M64,62 L74,72 L68,78 L58,68 Z" />
+</vector>
