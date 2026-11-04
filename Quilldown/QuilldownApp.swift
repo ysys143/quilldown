@@ -11,6 +11,16 @@ struct QuilldownApp: App {
 
     @NSApplicationDelegateAdaptor(DocumentAppDelegate.self) private var appDelegate
 
+    init() {
+        // Pre-warm a WKWebView with render.html fully loaded so the first
+        // document window can skip the ~600ms cold-start entirely. Runs on
+        // the main actor but returns immediately — the async load completes
+        // while the user is still picking a file in Finder.
+        Task { @MainActor in
+            WebViewStore.shared.warmup()
+        }
+    }
+
     var body: some Scene {
         Settings { EmptyView() }
         .commands {
